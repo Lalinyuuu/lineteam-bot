@@ -1,4 +1,4 @@
-# LINE Team Update Bot — ยู + ฝ้าย
+# LINE Team Update Bot
 
 บอทรับข้อความที่ขึ้นต้นด้วย `/update` จาก LINE แล้วบันทึกเป็นรายการใน Google Sheets พร้อมตอบรับในห้องแชต
 
