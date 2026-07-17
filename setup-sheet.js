@@ -1,6 +1,4 @@
-/**
- * วางโค้ดนี้ใน Extensions > Apps Script ของ Google Sheet แล้วกด Run setupSheet 1 ครั้ง
- */
+
 function setupSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Tasks');
