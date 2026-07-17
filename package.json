@@ -1,10 +1,11 @@
 {
-  "name": "line-team-update-bot",
-  "version": "1.0.0",
+  "name": "line-team-update-bot-v2",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "setup-sheet": "node setup-sheet.js"
   },
   "dependencies": {
     "googleapis": "^144.0.0"
