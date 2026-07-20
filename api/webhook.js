@@ -1,616 +1,1377 @@
-import crypto from 'node:crypto';
-import { google } from 'googleapis';
+import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
+
+import {
+  getProjects,
+  getProject,
+  getProjectByCode,
+  createProject,
+} from "../services/projectService.js";
+
+import {
+  getMyTasks,
+  getWaitingTasks,
+  getDoneTasks,
+  getProjectTasks,
+  createTask,
+  updateTaskStatus,
+} from "../services/taskService.js";
+
+import {
+  getTodayLogs,
+  addWorkLog,
+  getTodaySummary,
+} from "../services/worklogServices.js";
+
+import {
+  getContacts,
+  findContact,
+  createContact,
+} from "../services/contactService.js";
 
 export const config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
 
-const LINE_REPLY_URL = 'https://api.line.me/v2/bot/message/reply';
-const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || 'Tasks';
+const LINE_REPLY_URL =
+  "https://api.line.me/v2/bot/message/reply";
 
-const EXPECTED_HEADERS = [
-  'Timestamp',
-  'Date',
-  'Reporter',
-  'Project',
-  'Task',
-  'Status',
-  'UserId',
-  'RawText'
-];
+const TIME_ZONE = "Asia/Bangkok";
+
+// =========================
+// Read Raw Body
+// =========================
 
 async function readRawBody(req) {
   const chunks = [];
 
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    chunks.push(
+      Buffer.isBuffer(chunk)
+        ? chunk
+        : Buffer.from(chunk)
+    );
   }
 
   return Buffer.concat(chunks);
 }
 
-function verifyLineSignature(rawBodyBuffer, signature, channelSecret) {
-  if (!signature || !channelSecret) return false;
+// =========================
+// Verify LINE Signature
+// =========================
+
+function verifyLineSignature(
+  rawBody,
+  signature
+) {
+  const secret =
+    process.env.LINE_CHANNEL_SECRET;
+
+  if (!secret || !signature) {
+    return false;
+  }
 
   const expected = crypto
-    .createHmac('sha256', channelSecret)
-    .update(rawBodyBuffer)
-    .digest('base64');
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("base64");
 
-  const expectedBuffer = Buffer.from(expected);
-  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer =
+    Buffer.from(expected);
 
-  if (expectedBuffer.length !== actualBuffer.length) return false;
+  const actualBuffer =
+    Buffer.from(signature);
 
-  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+  if (
+    expectedBuffer.length !==
+    actualBuffer.length
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    expectedBuffer,
+    actualBuffer
+  );
 }
+
+// =========================
+// User Display Name
+// =========================
 
 function displayName(userId) {
-  const mapping = {
-    [process.env.LINE_USER_ID_YUU || '']: 'ยู',
-    [process.env.LINE_USER_ID_FAI || '']: 'ฝ้าย'
+  const users = {
+    [process.env.LINE_USER_ID_YUU ||
+    "__YUU__"]: "ยู",
+
+    [process.env.LINE_USER_ID_FAI ||
+    "__FAI__"]: "ฝ้าย",
   };
 
-  return mapping[userId] || 'ไม่ทราบชื่อ';
+  return (
+    users[userId] || "ไม่ทราบชื่อ"
+  );
 }
 
-function formatDateBangkok(date = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date);
+// =========================
+// Bangkok Date
+// =========================
+
+function bangkokDate(
+  date = new Date()
+) {
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+  ).format(date);
 }
 
-function normalizeStatus(task) {
-  const text = task.toLowerCase();
+// =========================
+// Generate ID
+// =========================
 
-  // Waiting มาก่อน เพราะข้อความหนึ่งอาจมีทั้ง "คอนเฟิร์มแล้ว" และ "ยังขาด..."
-  if (
-    /⏳|รอ|ขาดแต่|ยังขาด|ยังไม่ได้|ยังไม่ครบ|pending|waiting|ติดลูกค้า|ติด vendor|รอคอนเฟิร์ม|รออนุมัติ/i.test(
-      text
-    )
-  ) {
-    return 'Waiting';
-  }
-
-  if (
-    /🔄|กำลัง|อยู่ระหว่าง|กำลังดำเนินการ|กำลังทำ|doing|in progress/i.test(
-      text
-    )
-  ) {
-    return 'In Progress';
-  }
-
-  if (
-    /✅|☑|เสร็จแล้ว|เรียบร้อยแล้ว|ส่งแล้ว|อัปแล้ว|อัปเดตแล้ว|ดำเนินการแล้ว|คอนเฟิร์มครบแล้ว|done|completed/i.test(
-      text
-    )
-  ) {
-    return 'Done';
-  }
-
-  return 'To Do';
+function newId(prefix) {
+  return `${prefix}-${Date.now()
+    .toString(36)
+    .toUpperCase()}-${randomUUID()
+    .slice(0, 6)
+    .toUpperCase()}`;
 }
 
-function parseUpdate(text) {
-  const cleaned = text.replace(/^\/update\s*/i, '').trim();
+// =========================
+// Limit LINE Text
+// =========================
 
-  const lines = cleaned
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function compact(
+  text,
+  max = 5000
+) {
+  const value = String(
+    text || ""
+  ).trim();
 
-  const records = [];
-
-  let currentProject = 'ไม่ระบุ Project';
-  let currentTask = null;
-  let hasFoundFirstProject = false;
-
-  function saveCurrentTask() {
-    if (!currentTask) return;
-
-    const task = currentTask.lines
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (task) {
-      records.push({
-        project: currentProject,
-        task,
-        status: normalizeStatus(task)
-      });
-    }
-
-    currentTask = null;
+  if (value.length <= max) {
+    return value;
   }
 
-  function isTaskStart(line) {
-    return /^(?:\d+[.)]|[-•*])\s*(.+)$/.test(line);
+  return `${value.slice(
+    0,
+    max - 20
+  )}\n…ข้อความถูกตัด`;
+}
+
+// =========================
+// Reply LINE Message
+// =========================
+
+async function replyText(
+  replyToken,
+  text,
+  quickReplyItems = []
+) {
+  const token =
+    process.env
+      .LINE_CHANNEL_ACCESS_TOKEN;
+
+  if (!token) {
+    throw new Error(
+      "Missing LINE_CHANNEL_ACCESS_TOKEN"
+    );
   }
 
-  function extractTaskText(line) {
-    const match = line.match(/^(?:\d+[.)]|[-•*])\s*(.+)$/);
-    return match ? match[1].trim() : '';
-  }
+  const message = {
+    type: "text",
+    text: compact(text),
+  };
 
-  function extractProject(line) {
-    const explicitProject =
-      line.match(/^(?:project|โปรเจกต์)\s*[:：]\s*(.+)$/i) ||
-      line.match(/^\[(.+)]$/);
-
-    if (explicitProject) {
-      return explicitProject[1].trim();
-    }
-
-    return null;
-  }
-
-  for (const line of lines) {
-    const explicitProject = extractProject(line);
-
-    if (explicitProject) {
-      saveCurrentTask();
-      currentProject = explicitProject;
-      hasFoundFirstProject = true;
-      continue;
-    }
-
-    if (
-      !hasFoundFirstProject &&
-      !currentTask &&
-      records.length === 0 &&
-      !isTaskStart(line)
-    ) {
-      currentProject = line;
-      hasFoundFirstProject = true;
-      continue;
-    }
-
-    if (isTaskStart(line)) {
-      saveCurrentTask();
-
-      currentTask = {
-        lines: [extractTaskText(line)]
-      };
-
-      continue;
-    }
-
-    if (currentTask) {
-      currentTask.lines.push(line);
-      continue;
-    }
-
-    currentTask = {
-      lines: [line]
+  if (quickReplyItems.length) {
+    message.quickReply = {
+      items: quickReplyItems
+        .slice(0, 13)
+        .map((label) => ({
+          type: "action",
+          action: {
+            type: "message",
+            label: label.slice(0, 20),
+            text: label,
+          },
+        })),
     };
   }
 
-  saveCurrentTask();
+  const response = await fetch(
+    LINE_REPLY_URL,
+    {
+      method: "POST",
 
-  if (records.length === 0 && cleaned) {
-    records.push({
-      project: currentProject,
-      task: cleaned,
-      status: normalizeStatus(cleaned)
-    });
-  }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type":
+          "application/json",
+      },
 
-  return records;
-}
-
-async function getSheetsClient() {
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON');
-  }
-
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
-  });
-
-  return google.sheets({
-    version: 'v4',
-    auth
-  });
-}
-
-async function ensureSheetAndHeaders(sheets) {
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-
-  if (!spreadsheetId) {
-    throw new Error('Missing GOOGLE_SHEET_ID');
-  }
-
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId
-  });
-
-  const exists = spreadsheet.data.sheets?.some(
-    (sheet) => sheet.properties?.title === SHEET_NAME
+      body: JSON.stringify({
+        replyToken,
+        messages: [message],
+      }),
+    }
   );
 
-  if (!exists) {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: {
-                title: SHEET_NAME
-              }
-            }
-          }
-        ]
-      }
-    });
+  if (!response.ok) {
+    throw new Error(
+      `LINE reply failed: ${
+        response.status
+      } ${await response.text()}`
+    );
   }
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${SHEET_NAME}!A1:H1`,
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [EXPECTED_HEADERS]
-    }
-  });
 }
 
-async function appendRecords({
-  records,
-  reporter,
-  userId,
-  rawText
-}) {
-  const sheets = await getSheetsClient();
+// =========================
+// Parse Fields
+// =========================
 
-  await ensureSheetAndHeaders(sheets);
+function parseFields(text) {
+  const result = {};
 
-  const timestamp = new Date().toISOString();
-  const updateDate = formatDateBangkok();
+  const aliases = {
+    project: "project",
+    โปรเจกต์: "project",
 
-  const values = records.map((record) => [
-    timestamp,
-    updateDate,
-    reporter,
-    record.project,
-    record.task,
-    record.status,
-    userId,
-    rawText
-  ]);
+    code: "code",
+    รหัส: "code",
 
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range: `${SHEET_NAME}!A:H`,
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: {
-      values
-    }
-  });
-}
+    name: "name",
+    ชื่อ: "name",
 
-async function getTaskRows() {
-  const sheets = await getSheetsClient();
+    task: "task",
+    งาน: "task",
 
-  await ensureSheetAndHeaders(sheets);
+    description: "description",
+    รายละเอียด: "description",
 
-  const result = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range: `${SHEET_NAME}!A2:H`
-  });
+    owner: "owner",
+    ผู้รับผิดชอบ: "owner",
 
-  return (result.data.values || []).map((row) => ({
-    timestamp: row[0] || '',
-    date: row[1] || '',
-    reporter: row[2] || '',
-    project: row[3] || '',
-    task: row[4] || '',
-    status: row[5] || '',
-    userId: row[6] || '',
-    rawText: row[7] || ''
-  }));
-}
+    requestedby: "requestedBy",
+    ผู้มอบหมาย: "requestedBy",
 
-function statusIcon(status) {
-  if (status === 'Done') return '✅';
-  if (status === 'Waiting') return '⏳';
-  if (status === 'In Progress') return '🔄';
+    contact: "contact",
+    ผู้ติดต่อ: "contact",
 
-  return '⬜';
-}
+    status: "status",
+    สถานะ: "status",
 
-function formatRows(title, rows) {
-  if (!rows.length) {
-    return `${title}\n\nไม่พบข้อมูล`;
-  }
+    progress: "progress",
+    ความคืบหน้า: "progress",
 
-  const limited = rows.slice(-30).reverse();
+    priority: "priority",
+    ความสำคัญ: "priority",
 
-  const body = limited
-    .map(
-      (row, index) =>
-        `${index + 1}. ${statusIcon(row.status)} [${row.project}] ${row.task}\n` +
-        `   ${row.reporter} • ${row.date}`
+    due: "dueDate",
+    duedate: "dueDate",
+    กำหนดส่ง: "dueDate",
+
+    category: "category",
+    หมวดหมู่: "category",
+
+    nextstep: "nextStep",
+    ขั้นตอนถัดไป: "nextStep",
+
+    waitingfor: "waitingFor",
+    รอ: "waitingFor",
+
+    activity: "activityType",
+    กิจกรรม: "activityType",
+
+    worktype: "workType",
+    ประเภทงาน: "workType",
+
+    from: "fromPerson",
+    รับจาก: "fromPerson",
+
+    duration: "duration",
+    ระยะเวลา: "duration",
+
+    remark: "remark",
+    หมายเหตุ: "remark",
+
+    nickname: "nickname",
+    ชื่อเล่น: "nickname",
+
+    team: "team",
+    ทีม: "team",
+
+    company: "company",
+    บริษัท: "company",
+
+    position: "position",
+    ตำแหน่ง: "position",
+
+    phone: "phone",
+    โทร: "phone",
+
+    email: "email",
+
+    line: "line",
+  };
+
+  for (
+    const rawLine of text.split(
+      /\r?\n/
     )
-    .join('\n\n');
+  ) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      continue;
+    }
+
+    const match = line.match(
+      /^([^:=：]+)\s*[:=：]\s*(.+)$/
+    );
+
+    if (!match) {
+      continue;
+    }
+
+    const rawKey = match[1]
+      .replace(/\s+/g, "")
+      .toLowerCase();
+
+    const key = aliases[rawKey];
+
+    if (key) {
+      result[key] =
+        match[2].trim();
+    }
+  }
+
+  return result;
+}
+
+// =========================
+// Normalize Status
+// =========================
+
+function normalizeStatus(
+  text = ""
+) {
+  const value =
+    text.toLowerCase();
+
+  if (
+    /done|เสร็จ|เรียบร้อย|100/.test(
+      value
+    )
+  ) {
+    return "Done";
+  }
+
+  if (
+    /waiting|pending|รอ|ติด/.test(
+      value
+    )
+  ) {
+    return "Waiting";
+  }
+
+  if (
+    /doing|in progress|กำลัง|ดำเนิน/.test(
+      value
+    )
+  ) {
+    return "Doing";
+  }
+
+  if (
+    /cancel|ยกเลิก/.test(value)
+  ) {
+    return "Cancelled";
+  }
+
+  return "To Do";
+}
+
+// =========================
+// Infer Activity Type
+// =========================
+
+function inferActivity(
+  text = ""
+) {
+  if (
+    /ประชุม|meeting/i.test(text)
+  ) {
+    return "Meeting";
+  }
+
+  if (
+    /ประสาน|coordinate|โทรหา|ติดต่อ/i.test(
+      text
+    )
+  ) {
+    return "Coordinate";
+  }
+
+  if (
+    /รอ|waiting|pending/i.test(
+      text
+    )
+  ) {
+    return "Waiting";
+  }
+
+  if (
+    /เสร็จ|done|เรียบร้อย/i.test(
+      text
+    )
+  ) {
+    return "Done";
+  }
+
+  if (
+    /รับเรื่อง|ได้รับ|receive/i.test(
+      text
+    )
+  ) {
+    return "Receive";
+  }
+
+  return "Working";
+}
+
+// =========================
+// Resolve Project
+// =========================
+
+async function resolveProject(
+  value
+) {
+  if (!value) {
+    return null;
+  }
+
+  const byId =
+    await getProject(value);
+
+  if (byId) {
+    return byId;
+  }
+
+  const byCode =
+    await getProjectByCode(value);
+
+  if (byCode) {
+    return byCode;
+  }
+
+  const projects =
+    await getProjects();
+
+  return (
+    projects.find((project) => {
+      const name =
+        project["Project Name"] ||
+        "";
+
+      return (
+        name.toLowerCase() ===
+          value.toLowerCase() ||
+        name
+          .toLowerCase()
+          .includes(
+            value.toLowerCase()
+          )
+      );
+    }) || null
+  );
+}
+
+// =========================
+// Format Task
+// =========================
+
+function formatTask(
+  task,
+  index
+) {
+  const status =
+    task.Status || "To Do";
+
+  let icon = "⬜";
+
+  if (status === "Done") {
+    icon = "✅";
+  } else if (
+    status === "Waiting"
+  ) {
+    icon = "⏳";
+  } else if (
+    status === "Doing"
+  ) {
+    icon = "🔄";
+  }
+
+  const progress =
+    task["Progress (%)"] !== ""
+      ? ` • ${task["Progress (%)"]}%`
+      : "";
+
+  const due =
+    task["Due Date"]
+      ? `\n   📅 ${task["Due Date"]}`
+      : "";
+
+  return (
+    `${index + 1}. ${icon} ` +
+    `${task["Task Name"]}${progress}\n` +
+    `   ID: ${task["Task ID"]}` +
+    `${due}`
+  );
+}
+
+// =========================
+// Format Task List
+// =========================
+
+function formatTasks(
+  title,
+  tasks
+) {
+  if (!tasks.length) {
+    return `${title}\n\nไม่พบรายการงาน`;
+  }
+
+  const shown = tasks
+    .slice(-20)
+    .reverse();
+
+  const body = shown
+    .map(formatTask)
+    .join("\n\n");
 
   const more =
-    rows.length > 30
-      ? `\n\nแสดง 30 จากทั้งหมด ${rows.length} รายการ`
-      : '';
+    tasks.length > 20
+      ? `\n\nแสดง 20 จาก ${tasks.length} รายการ`
+      : "";
 
   return `${title}\n\n${body}${more}`;
 }
 
-function buildSummary(rows, dateLabel = 'ทั้งหมด') {
-  const users = ['ยู', 'ฝ้าย'];
-  const lines = [`📊 สรุปงาน ${dateLabel}`];
-
-  for (const user of users) {
-    const userRows = rows.filter((row) => row.reporter === user);
-    const done = userRows.filter((row) => row.status === 'Done').length;
-    const doing = userRows.filter(
-      (row) => row.status === 'In Progress'
-    ).length;
-    const waiting = userRows.filter(
-      (row) => row.status === 'Waiting'
-    ).length;
-    const todo = userRows.filter((row) => row.status === 'To Do').length;
-
-    lines.push(
-      `\n👤 ${user}`,
-      `✅ Done ${done}`,
-      `🔄 In Progress ${doing}`,
-      `⏳ Waiting ${waiting}`,
-      `⬜ To Do ${todo}`
-    );
-  }
-
-  lines.push(`\nรวมทั้งหมด ${rows.length} รายการ`);
-
-  return lines.join('\n');
-}
-
-async function replyMessage(replyToken, text) {
-  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) {
-    throw new Error('Missing LINE_CHANNEL_ACCESS_TOKEN');
-  }
-
-  const response = await fetch(LINE_REPLY_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages: [
-        {
-          type: 'text',
-          text: text.slice(0, 5000)
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `LINE reply failed: ${response.status} ${await response.text()}`
-    );
-  }
-}
-
-function buildConfirmation(reporter, records) {
-  const preview = records
-    .slice(0, 10)
-    .map(
-      (record, index) =>
-        `${index + 1}. ${statusIcon(record.status)} [${record.project}] ${record.task}`
-    )
-    .join('\n');
-
-  const remaining =
-    records.length > 10
-      ? `\nและอีก ${records.length - 10} รายการ`
-      : '';
-
-  return `✅ บันทึก Daily Update ของ ${reporter} แล้ว ${records.length} รายการ\n\n${preview}${remaining}`;
-}
+// =========================
+// Help Text
+// =========================
 
 function helpText() {
   return [
-    '📌 คำสั่งที่ใช้ได้',
-    '',
-    '/update บันทึกงาน',
-    '/today ดูงานวันนี้',
-    '/my ดูงานของฉัน',
-    '/waiting ดูงานที่รอ',
-    '/done ดูงานที่เสร็จ',
-    '/project ชื่อโปรเจกต์',
-    '/summary สรุปงานวันนี้',
-    '/help ดูคำสั่ง',
-    '',
-    'ตัวอย่าง',
-    '/update',
-    'Project 50',
-    '1. Online Meeting วันที่ 20 July 2026',
-    'อัป calendar แล้ว',
-    '2. รายงานผลการศึกษา',
-    'ยังขาดผู้เข้าร่วม 1 คน',
-    '',
-    'กรณีมีหลาย Project ให้เขียนแบบนี้',
-    'Project: Project 50',
-    '1. งานแรก',
-    '2. งานที่สอง',
-    'Project: Oracle',
-    '1. งาน Oracle'
-  ].join('\n');
+    "🚀 Yuu Checkpoint",
+    "",
+    "บันทึกงานเร็ว",
+    "/update Project 50 วันนี้ประชุมกับพี่บอย รอ BA ส่ง Flow",
+    "",
+    "เพิ่มงานแบบละเอียด",
+    "/task add",
+    "Project: P50",
+    "Task: สรุปรายงานผลการศึกษา",
+    "Owner: ยู",
+    "Due: 2026-07-23",
+    "Priority: High",
+    "",
+    "อัปเดตสถานะ",
+    "/task update TASK-ID Done 100",
+    "",
+    "ดูข้อมูล",
+    "/today",
+    "/my",
+    "/waiting",
+    "/done",
+    "/project P50",
+    "/projects",
+    "/contacts",
+    "/summary",
+    "",
+    "เพิ่มโปรเจกต์",
+    "/project add",
+    "",
+    "เพิ่มผู้ติดต่อ",
+    "/contact add",
+  ].join("\n");
 }
 
-async function handleCommand(text, userId) {
-  const rows = await getTaskRows();
-  const today = formatDateBangkok();
+// =========================
+// Add Quick WorkLog
+// =========================
 
-  if (/^\/today$/i.test(text)) {
-    return formatRows(
-      `📅 งานวันนี้ ${today}`,
-      rows.filter((row) => row.date === today)
-    );
+async function addQuickUpdate(
+  text,
+  userId
+) {
+  const reporter =
+    displayName(userId);
+
+  const cleaned = text
+    .replace(
+      /^\/update\s*/i,
+      ""
+    )
+    .trim();
+
+  if (!cleaned) {
+    return "กรุณาพิมพ์รายละเอียดต่อจาก /update";
   }
 
-  if (/^\/my$/i.test(text)) {
-    return formatRows(
-      `👤 งานของ ${displayName(userId)}`,
-      rows.filter((row) => row.userId === userId)
+  const firstLine =
+    cleaned
+      .split(/\r?\n/)[0]
+      .trim();
+
+  let project = null;
+  let description = cleaned;
+
+  const explicit =
+    cleaned.match(
+      /^(?:project|โปรเจกต์)\s*[:：]?\s*([^\n]+)\n?([\s\S]*)$/i
     );
+
+  if (explicit) {
+    project =
+      await resolveProject(
+        explicit[1].trim()
+      );
+
+    description =
+      explicit[2].trim() ||
+      explicit[1].trim();
+  } else {
+    const projects =
+      await getProjects();
+
+    project =
+      projects.find(
+        (item) => {
+          const code =
+            item[
+              "Project Code"
+            ] || "";
+
+          const name =
+            item[
+              "Project Name"
+            ] || "";
+
+          const line =
+            firstLine.toLowerCase();
+
+          return (
+            (code &&
+              line.includes(
+                code.toLowerCase()
+              )) ||
+            (name &&
+              line.includes(
+                name.toLowerCase()
+              ))
+          );
+        }
+      ) || null;
   }
 
-  if (/^\/waiting$/i.test(text)) {
-    return formatRows(
-      '⏳ งานที่กำลังรอ',
-      rows.filter((row) => row.status === 'Waiting')
-    );
-  }
+  const activityType =
+    inferActivity(description);
 
-  if (/^\/done$/i.test(text)) {
-    return formatRows(
-      '✅ งานที่เสร็จแล้ว',
-      rows.filter((row) => row.status === 'Done')
-    );
-  }
+  await addWorkLog({
+    logId: newId("LOG"),
 
-  if (/^\/summary$/i.test(text)) {
-    return buildSummary(
-      rows.filter((row) => row.date === today),
-      today
-    );
-  }
+    projectId:
+      project?.[
+        "Project ID"
+      ] || "",
 
-  const projectMatch = text.match(/^\/project(?:\s+(.+))?$/i);
+    createdBy: reporter,
 
-  if (projectMatch) {
-    const keyword = (projectMatch[1] || '').trim();
+    activityType,
 
-    if (!keyword) {
-      return 'กรุณาระบุชื่อโปรเจกต์ เช่น /project Project 50';
-    }
+    workType:
+      activityType ===
+      "Meeting"
+        ? "Meeting"
+        : "Internal",
 
-    return formatRows(
-      `📁 Project: ${keyword}`,
-      rows.filter((row) =>
-        row.project.toLowerCase().includes(keyword.toLowerCase())
-      )
-    );
-  }
+    description,
 
+    statusAfterUpdate:
+      normalizeStatus(
+        description
+      ),
+  });
+
+  return [
+    "✅ บันทึก WorkLog แล้ว",
+    `👤 ${reporter}`,
+    `📁 ${
+      project?.[
+        "Project Name"
+      ] || "ไม่ระบุโปรเจกต์"
+    }`,
+    `📝 ${description}`,
+  ].join("\n");
+}
+
+// =========================
+// Handle Commands
+// =========================
+
+async function handleCommand(
+  text,
+  userId
+) {
+  const reporter =
+    displayName(userId);
+
+  const today =
+    bangkokDate();
+
+  // Help
   if (/^\/help$/i.test(text)) {
     return helpText();
+  }
+
+  // Quick Update
+  if (
+    /^\/update(?:\s|$)/i.test(
+      text
+    )
+  ) {
+    return addQuickUpdate(
+      text,
+      userId
+    );
+  }
+
+  // Today WorkLog
+  if (/^\/today$/i.test(text)) {
+    const logs =
+      await getTodayLogs();
+
+    if (!logs.length) {
+      return `📅 ${today}\n\nยังไม่มี WorkLog วันนี้`;
+    }
+
+    const body = logs
+      .slice(-25)
+      .reverse()
+      .map((log, index) => {
+        const project =
+          log["Project ID"]
+            ? ` • ${log["Project ID"]}`
+            : "";
+
+        return (
+          `${index + 1}. ` +
+          `[${log["Activity Type"]}] ` +
+          `${log.Description}\n` +
+          `   ${log["Created By"]}` +
+          project
+        );
+      })
+      .join("\n\n");
+
+    return (
+      `📅 WorkLog วันนี้ ${today}` +
+      `\n\n${body}`
+    );
+  }
+
+  // Summary
+  if (
+    /^\/summary$/i.test(text)
+  ) {
+    const summary =
+      await getTodaySummary();
+
+    return [
+      `📊 สรุปวันนี้ ${today}`,
+      "",
+      `ทั้งหมด ${summary.total}`,
+      `🗓 Meeting ${summary.meeting}`,
+      `🔄 Working ${summary.working}`,
+      `⏳ Waiting ${summary.waiting}`,
+      `✅ Done ${summary.done}`,
+    ].join("\n");
+  }
+
+  // My Tasks
+  if (/^\/my$/i.test(text)) {
+    const tasks =
+      await getMyTasks(
+        reporter
+      );
+
+    return formatTasks(
+      `👤 งานของ ${reporter}`,
+      tasks
+    );
+  }
+
+  // Waiting Tasks
+  if (
+    /^\/waiting$/i.test(text)
+  ) {
+    const tasks =
+      await getWaitingTasks();
+
+    return formatTasks(
+      "⏳ งานที่รอ",
+      tasks
+    );
+  }
+
+  // Done Tasks
+  if (/^\/done$/i.test(text)) {
+    const tasks =
+      await getDoneTasks();
+
+    return formatTasks(
+      "✅ งานที่เสร็จ",
+      tasks
+    );
+  }
+
+  // All Projects
+  if (
+    /^\/projects$/i.test(text)
+  ) {
+    const projects =
+      await getProjects();
+
+    if (!projects.length) {
+      return "ยังไม่มีโปรเจกต์";
+    }
+
+    const body = projects
+      .map(
+        (project, index) =>
+          `${index + 1}. ` +
+          `${project["Project Code"]} — ` +
+          `${project["Project Name"]} ` +
+          `(${project.Status})`
+      )
+      .join("\n");
+
+    return `📁 โปรเจกต์ทั้งหมด\n\n${body}`;
+  }
+
+  // All Contacts
+  if (
+    /^\/contacts$/i.test(text)
+  ) {
+    const contacts =
+      await getContacts();
+
+    if (!contacts.length) {
+      return "ยังไม่มีผู้ติดต่อ";
+    }
+
+    const body = contacts
+      .slice(0, 30)
+      .map(
+        (contact, index) => {
+          const nickname =
+            contact.Nickname
+              ? ` (${contact.Nickname})`
+              : "";
+
+          const team =
+            contact.Team
+              ? ` • ${contact.Team}`
+              : "";
+
+          return (
+            `${index + 1}. ` +
+            `${contact.Name}` +
+            `${nickname}${team}`
+          );
+        }
+      )
+      .join("\n");
+
+    return `👥 ผู้ติดต่อ\n\n${body}`;
+  }
+
+  // Add Project
+  if (
+    /^\/project\s+add(?:\s|$)/i.test(
+      text
+    )
+  ) {
+    const fields =
+      parseFields(text);
+
+    if (
+      !fields.name ||
+      !fields.code
+    ) {
+      return [
+        "กรุณาระบุ Code และ Name",
+        "",
+        "/project add",
+        "Code: P50",
+        "Name: Project 50",
+        "Owner: ยู",
+      ].join("\n");
+    }
+
+    const existing =
+      await getProjectByCode(
+        fields.code
+      );
+
+    if (existing) {
+      return `มี Project Code ${fields.code} อยู่แล้ว`;
+    }
+
+    const projectId =
+      newId("PRJ");
+
+    await createProject({
+      projectId,
+
+      projectCode:
+        fields.code,
+
+      projectName:
+        fields.name,
+
+      description:
+        fields.description,
+
+      projectManager:
+        fields.owner,
+
+      priority:
+        fields.priority,
+    });
+
+    return [
+      "✅ เพิ่มโปรเจกต์แล้ว",
+      `${fields.code} — ${fields.name}`,
+      `ID: ${projectId}`,
+    ].join("\n");
+  }
+
+  // Search Project Tasks
+  const projectSearch =
+    text.match(
+      /^\/project\s+(.+)$/i
+    );
+
+  if (projectSearch) {
+    const project =
+      await resolveProject(
+        projectSearch[1].trim()
+      );
+
+    if (!project) {
+      return "ไม่พบโปรเจกต์";
+    }
+
+    const tasks =
+      await getProjectTasks(
+        project["Project ID"]
+      );
+
+    return formatTasks(
+      `📁 ${project["Project Name"]}`,
+      tasks
+    );
+  }
+
+  // Add Task
+  if (
+    /^\/task\s+add(?:\s|$)/i.test(
+      text
+    )
+  ) {
+    const fields =
+      parseFields(text);
+
+    if (
+      !fields.task &&
+      !fields.name
+    ) {
+      return [
+        "กรุณาระบุ Task",
+        "",
+        "/task add",
+        "Project: P50",
+        "Task: สรุป MoM",
+        "Owner: ยู",
+      ].join("\n");
+    }
+
+    const project =
+      await resolveProject(
+        fields.project
+      );
+
+    if (
+      fields.project &&
+      !project
+    ) {
+      return `ไม่พบโปรเจกต์ ${fields.project}`;
+    }
+
+    const taskId =
+      newId("TASK");
+
+    await createTask({
+      taskId,
+
+      projectId:
+        project?.[
+          "Project ID"
+        ] || "",
+
+      taskName:
+        fields.task ||
+        fields.name,
+
+      description:
+        fields.description,
+
+      owner:
+        fields.owner ||
+        reporter,
+
+      requestedBy:
+        fields.requestedBy,
+
+      contactPerson:
+        fields.contact,
+
+      status:
+        normalizeStatus(
+          fields.status
+        ),
+
+      progress:
+        Number.parseInt(
+          fields.progress ||
+            "0",
+          10
+        ) || 0,
+
+      priority:
+        fields.priority,
+
+      category:
+        fields.category,
+
+      nextStep:
+        fields.nextStep,
+
+      waitingFor:
+        fields.waitingFor,
+
+      dueDate:
+        fields.dueDate,
+
+      receivedDate:
+        today,
+
+      createdBy:
+        reporter,
+
+      updatedBy:
+        reporter,
+    });
+
+    return [
+      "✅ เพิ่มงานแล้ว",
+      `📝 ${
+        fields.task ||
+        fields.name
+      }`,
+      `👤 ${
+        fields.owner ||
+        reporter
+      }`,
+      `📁 ${
+        project?.[
+          "Project Name"
+        ] ||
+        "ไม่ระบุโปรเจกต์"
+      }`,
+      `ID: ${taskId}`,
+    ].join("\n");
+  }
+
+  // Update Task
+  const taskUpdate =
+    text.match(
+      /^\/task\s+update\s+(\S+)\s+(.+?)(?:\s+(\d{1,3}))?$/i
+    );
+
+  if (taskUpdate) {
+    const taskId =
+      taskUpdate[1];
+
+    const rawStatus =
+      taskUpdate[2];
+
+    const rawProgress =
+      taskUpdate[3];
+
+    const status =
+      normalizeStatus(
+        rawStatus
+      );
+
+    const progress =
+      rawProgress
+        ? Math.min(
+            100,
+            Number(rawProgress)
+          )
+        : status === "Done"
+          ? 100
+          : 0;
+
+    const updated =
+      await updateTaskStatus(
+        taskId,
+        status,
+        progress,
+        reporter
+      );
+
+    if (!updated) {
+      return `ไม่พบ Task ID ${taskId}`;
+    }
+
+    return [
+      `✅ อัปเดต ${taskId}`,
+      `สถานะ: ${status}`,
+      `ความคืบหน้า: ${progress}%`,
+    ].join("\n");
+  }
+
+  // Add Contact
+  if (
+    /^\/contact\s+add(?:\s|$)/i.test(
+      text
+    )
+  ) {
+    const fields =
+      parseFields(text);
+
+    if (!fields.name) {
+      return [
+        "กรุณาระบุ Name",
+        "",
+        "/contact add",
+        "Name: พี่บอย",
+        "Team: ลูกค้า",
+        "Phone: 08x-xxx-xxxx",
+      ].join("\n");
+    }
+
+    const existing =
+      await findContact(
+        fields.name
+      );
+
+    if (existing) {
+      return `มีผู้ติดต่อชื่อ ${fields.name} อยู่แล้ว`;
+    }
+
+    const contactId =
+      newId("CON");
+
+    await createContact({
+      contactId,
+
+      name:
+        fields.name,
+
+      nickname:
+        fields.nickname,
+
+      team:
+        fields.team,
+
+      company:
+        fields.company,
+
+      position:
+        fields.position,
+
+      phone:
+        fields.phone,
+
+      email:
+        fields.email,
+
+      line:
+        fields.line,
+
+      remark:
+        fields.remark,
+    });
+
+    return [
+      "✅ เพิ่มผู้ติดต่อแล้ว",
+      `👤 ${fields.name}`,
+      `ID: ${contactId}`,
+    ].join("\n");
   }
 
   return null;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
+// =========================
+// Main Webhook Handler
+// =========================
+
+export default async function handler(
+  req,
+  res
+) {
+  if (
+    req.method !== "POST"
+  ) {
+    return res
+      .status(405)
+      .send(
+        "Method Not Allowed"
+      );
   }
 
   try {
-    const rawBodyBuffer = await readRawBody(req);
-    const rawBody = rawBodyBuffer.toString('utf8');
-    const signature = req.headers['x-line-signature'];
+    const rawBody =
+      await readRawBody(req);
 
-    const isValidSignature = verifyLineSignature(
-      rawBodyBuffer,
-      signature,
-      process.env.LINE_CHANNEL_SECRET
-    );
+    const signature =
+      req.headers[
+        "x-line-signature"
+      ];
 
-    if (!isValidSignature) {
-      return res.status(401).send('Invalid signature');
+    const isValid =
+      verifyLineSignature(
+        rawBody,
+        signature
+      );
+
+    if (!isValid) {
+      return res
+        .status(401)
+        .send(
+          "Invalid signature"
+        );
     }
 
-    let payload;
+    let body;
 
     try {
-      payload = JSON.parse(rawBody);
+      body = JSON.parse(
+        rawBody.toString(
+          "utf8"
+        )
+      );
     } catch {
-      return res.status(400).send('Invalid JSON');
+      return res
+        .status(400)
+        .send("Invalid JSON");
     }
 
-    for (const event of payload.events || []) {
+    for (
+      const event of
+        body.events || []
+    ) {
       const isTextMessage =
-        event.type === 'message' &&
-        event.message?.type === 'text' &&
+        event.type ===
+          "message" &&
+        event.message?.type ===
+          "text" &&
         event.replyToken;
 
       if (!isTextMessage) {
         continue;
       }
 
-      const text = event.message.text.trim();
-      const userId = event.source?.userId || '';
+      const text =
+        event.message.text.trim();
+
+      const userId =
+        event.source?.userId ||
+        "";
 
       try {
-        if (/^\/update(?:\s|$)/i.test(text)) {
-          const reporter = displayName(userId);
-          const records = parseUpdate(text);
-
-          if (!records.length) {
-            await replyMessage(
-              event.replyToken,
-              'ไม่พบรายการงาน กรุณาใส่งานหลัง /update'
-            );
-
-            continue;
-          }
-
-          await appendRecords({
-            records,
-            reporter,
-            userId,
-            rawText: text
-          });
-
-          await replyMessage(
-            event.replyToken,
-            buildConfirmation(reporter, records)
+        const reply =
+          await handleCommand(
+            text,
+            userId
           );
 
-          continue;
-        }
-
-        const reply = await handleCommand(text, userId);
-
         if (reply) {
-          await replyMessage(event.replyToken, reply);
+          await replyText(
+            event.replyToken,
+            reply,
+            [
+              "/today",
+              "/my",
+              "/waiting",
+              "/summary",
+              "/help",
+            ]
+          );
+        } else {
+          await replyText(
+            event.replyToken,
+            "ไม่รู้จักคำสั่งนี้ พิมพ์ /help เพื่อดูวิธีใช้",
+            [
+              "/help",
+              "/today",
+              "/my",
+            ]
+          );
         }
       } catch (eventError) {
-        console.error('Event processing failed:', eventError);
+        console.error(
+          "Event processing failed:",
+          eventError
+        );
 
-        await replyMessage(
+        await replyText(
           event.replyToken,
-          'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'
+          `เกิดข้อผิดพลาด: ${
+            eventError.message ||
+            "กรุณาลองใหม่"
+          }`
         ).catch(() => {});
       }
     }
 
-    return res.status(200).send('OK');
+    return res
+      .status(200)
+      .send("OK");
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error(
+      "Webhook failed:",
+      error
+    );
 
-    return res.status(500).send('Internal Server Error');
+    return res
+      .status(500)
+      .send(
+        "Internal Server Error"
+      );
   }
 }
