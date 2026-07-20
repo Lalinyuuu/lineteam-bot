@@ -1,8 +1,8 @@
-import { SHEETS } from "../config.js";
+import { SHEETS } from "../api/config.js";
 import {
   getObjects,
   appendRow,
-} from "../sheets.js";
+} from "../api/sheets.js";
 
 // =========================
 // Get All Work Logs
