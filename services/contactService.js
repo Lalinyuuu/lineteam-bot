@@ -1,10 +1,10 @@
-import { SHEETS } from "../config.js";
+import { SHEETS } from "../api/config.js";
 import {
   getObjects,
  appendRow,
   findRow,
   updateRow,
-} from "../sheets.js";
+} from "../api/sheets.js";
 
 // =========================
 // Get All Contacts
