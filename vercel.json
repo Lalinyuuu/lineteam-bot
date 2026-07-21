@@ -1,12 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "functions": {
     "api/webhook.js": {
-      "includeFiles": [
-        "services/**",
-        "api/config.js",
-        "api/sheets.js"
-      ]
+      "includeFiles": "{services/**,api/config.js,api/sheets.js}"
     }
   }
 }
