@@ -6,7 +6,7 @@ import {
   getProject,
   getProjectByCode,
   createProject,
-} from "../services/projectService.js";
+} from "../services/projectServices.js";
 
 import {
   getMyTasks,
