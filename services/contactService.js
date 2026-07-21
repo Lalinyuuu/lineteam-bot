@@ -4,7 +4,7 @@ import {
  appendRow,
   findRow,
   updateRow,
-} from "../api/sheets.js";
+} from "../sheets.js";
 
 
 // Get All Contacts
