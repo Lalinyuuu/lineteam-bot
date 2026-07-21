@@ -1,14 +1,12 @@
-import { SHEETS, DEFAULTS } from "../api/config.js";
+import { SHEETS, DEFAULTS } from "../config.js";
 import {
   getObjects,
   appendRow,
   findRow,
   updateRow,
-} from "../api/sheets.js";
+} from "../sheets.js";
 
-// =========================
 // Get All Tasks
-// =========================
 
 export async function getTasks() {
   return await getObjects(SHEETS.TASKS);

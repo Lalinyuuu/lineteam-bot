@@ -1,7 +1,12 @@
 {
+  "version": 2,
   "functions": {
     "api/webhook.js": {
-      "maxDuration": 30
+      "includeFiles": [
+        "services/**",
+        "api/config.js",
+        "api/sheets.js"
+      ]
     }
   }
 }

@@ -1,20 +1,16 @@
-import { SHEETS } from "../api/config.js";
+import { SHEETS } from "../config.js";
 import {
   getObjects,
   appendRow,
-} from "../api/sheets.js";
+} from "../sheets.js";
 
-// =========================
 // Get All Work Logs
-// =========================
 
 export async function getWorkLogs() {
   return await getObjects(SHEETS.WORKLOG);
 }
 
-// =========================
 // Get Logs By Task
-// =========================
 
 export async function getTaskLogs(taskId) {
   const logs = await getWorkLogs();
