@@ -89,7 +89,9 @@ export function parseFields(text) {
       continue;
     }
 
-    const match = line.match(/^([^:=：]+)\s*[:=：]\s*(.+)$/);
+    const match = line.match(
+      /^([^:=：]+)\s*[:=：]\s*(.+)$/
+    );
 
     if (!match) {
       continue;
@@ -110,25 +112,139 @@ export function parseFields(text) {
 }
 
 export function normalizeStatus(text = "") {
-  const value = text.toLowerCase();
+  const value = String(text)
+    .trim()
+    .toLowerCase();
 
-  if (/done|เสร็จ|เรียบร้อย|100/.test(value)) {
+  if (
+    value === "done" ||
+    /เสร็จ|เรียบร้อย|เสร็จแล้ว/.test(value)
+  ) {
     return "Done";
   }
 
-  if (/waiting|pending|รอ|ติด/.test(value)) {
+  if (
+    value === "waiting" ||
+    value === "pending" ||
+    /รอ|ติด/.test(value)
+  ) {
     return "Waiting";
   }
 
-  if (/doing|in progress|กำลัง|ดำเนิน/.test(value)) {
+  if (
+    value === "doing" ||
+    value === "in progress" ||
+    /กำลัง|ดำเนิน/.test(value)
+  ) {
     return "Doing";
   }
 
-  if (/cancel|ยกเลิก/.test(value)) {
+  if (
+    value === "cancelled" ||
+    value === "canceled" ||
+    /ยกเลิก/.test(value)
+  ) {
     return "Cancelled";
   }
 
   return "To Do";
+}
+
+export function normalizePriority(text = "") {
+  const value = String(text)
+    .trim()
+    .toLowerCase();
+
+  if (
+    value === "critical" ||
+    /ด่วนมาก|เร่งด่วนมาก|วิกฤต/.test(value)
+  ) {
+    return "Critical";
+  }
+
+  if (
+    value === "high" ||
+    /สำคัญมาก|ความสำคัญสูง|ด่วน|สูง/.test(value)
+  ) {
+    return "High";
+  }
+
+  if (
+    value === "low" ||
+    /ความสำคัญต่ำ|ไม่เร่ง|ต่ำ/.test(value)
+  ) {
+    return "Low";
+  }
+
+  return "Medium";
+}
+
+export function normalizeCategory(text = "") {
+  const value = String(text)
+    .trim()
+    .toLowerCase();
+
+  const categories = {
+    meeting: "Meeting",
+    ประชุม: "Meeting",
+
+    report: "Report",
+    รายงาน: "Report",
+
+    ba: "BA",
+    businessanalysis: "BA",
+    วิเคราะห์ธุรกิจ: "BA",
+
+    sa: "SA",
+    systemanalysis: "SA",
+    วิเคราะห์ระบบ: "SA",
+
+    development: "Development",
+    develop: "Development",
+    dev: "Development",
+    พัฒนา: "Development",
+
+    testing: "Testing",
+    test: "Testing",
+    ทดสอบ: "Testing",
+
+    deployment: "Deployment",
+    deploy: "Deployment",
+    ติดตั้ง: "Deployment",
+
+    coordination: "Coordination",
+    coordinate: "Coordination",
+    ประสานงาน: "Coordination",
+
+    document: "Document",
+    เอกสาร: "Document",
+
+    oracle: "Oracle",
+
+    infrastructure: "Infrastructure",
+    infra: "Infrastructure",
+    โครงสร้างพื้นฐาน: "Infrastructure",
+
+    "focus group": "Focus Group",
+    focusgroup: "Focus Group",
+    โฟกัสกรุ๊ป: "Focus Group",
+    โฟกัสกรุ๊ป: "Focus Group",
+
+    support: "Support",
+    สนับสนุน: "Support",
+
+    other: "Other",
+    อื่นๆ: "Other",
+    อื่น: "Other",
+  };
+
+  const compactValue = value.replace(/\s+/g, "");
+
+  return (
+    categories[value] ||
+    categories[compactValue] ||
+    "Other"
+  );
 }
 
 export function inferActivity(text = "") {
@@ -136,7 +252,9 @@ export function inferActivity(text = "") {
     return "Meeting";
   }
 
-  if (/ประสาน|coordinate|โทรหา|ติดต่อ/i.test(text)) {
+  if (
+    /ประสาน|coordinate|โทรหา|ติดต่อ/i.test(text)
+  ) {
     return "Coordinate";
   }
 
