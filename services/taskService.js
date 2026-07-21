@@ -6,10 +6,12 @@ import {
   updateRow,
 } from "../sheets.js";
 
+// =========================
 // Get All Tasks
+// =========================
 
 export async function getTasks() {
-  return await getObjects(SHEETS.TASKS);
+  return getObjects(SHEETS.TASKS);
 }
 
 // =========================
@@ -19,7 +21,11 @@ export async function getTasks() {
 export async function getTask(taskId) {
   const tasks = await getTasks();
 
-  return tasks.find((t) => t["Task ID"] === taskId) || null;
+  return (
+    tasks.find(
+      (task) => task["Task ID"] === String(taskId)
+    ) ?? null
+  );
 }
 
 // =========================
@@ -29,7 +35,9 @@ export async function getTask(taskId) {
 export async function getMyTasks(owner) {
   const tasks = await getTasks();
 
-  return tasks.filter((t) => t.Owner === owner);
+  return tasks.filter(
+    (task) => task.Owner === owner
+  );
 }
 
 // =========================
@@ -40,7 +48,7 @@ export async function getWaitingTasks() {
   const tasks = await getTasks();
 
   return tasks.filter(
-    (t) => t.Status === "Waiting"
+    (task) => task.Status === "Waiting"
   );
 }
 
@@ -52,7 +60,7 @@ export async function getDoneTasks() {
   const tasks = await getTasks();
 
   return tasks.filter(
-    (t) => t.Status === "Done"
+    (task) => task.Status === "Done"
   );
 }
 
@@ -62,9 +70,12 @@ export async function getDoneTasks() {
 
 export async function getProjectTasks(projectId) {
   const tasks = await getTasks();
+  const expectedProjectId = String(projectId);
 
   return tasks.filter(
-    (t) => t["Project ID"] === projectId
+    (task) =>
+      String(task["Project ID"]) ===
+      expectedProjectId
   );
 }
 
@@ -73,41 +84,65 @@ export async function getProjectTasks(projectId) {
 // =========================
 
 export async function createTask(task) {
+  if (!task?.taskId) {
+    throw new Error(
+      "createTask: taskId is required"
+    );
+  }
+
+  if (!task?.taskName) {
+    throw new Error(
+      "createTask: taskName is required"
+    );
+  }
+
   const now = new Date().toISOString();
 
+  const createdBy =
+    task.createdBy ??
+    task.owner ??
+    "";
+
+  const updatedBy =
+    task.updatedBy ??
+    createdBy;
+
   const row = [
-    task.taskId,
-    task.projectId ?? "",
-    task.parentTaskId ?? "",
-    task.taskCode ?? "",
-    task.taskName,
-    task.description ?? "",
-    task.referenceLink ?? "",
-    task.category ?? "",
-    task.owner ?? "",
-    task.requestedBy ?? "",
-    task.contactPerson ?? "",
-    task.status ?? DEFAULTS.TASK_STATUS,
-    task.progress ?? DEFAULTS.PROGRESS,
-    task.priority ?? DEFAULTS.PRIORITY,
-    task.latestUpdate ?? "",
-    task.nextStep ?? "",
-    task.waitingFor ?? "",
-    task.receivedDate ?? "",
-    task.dueDate ?? "",
-    task.estimatedHours ?? "",
-    task.actualHours ?? "",
-    now,
-    task.createdBy ?? "",
-    now,
-    task.updatedBy ?? "",
-    "",
-    "",
+    task.taskId,                         // Task ID
+    task.projectId ?? "",                // Project ID
+    task.parentTaskId ?? "",             // Parent Task ID
+    task.taskCode ?? "",                 // Task Code
+    task.taskName,                       // Task Name
+    task.description ?? "",              // Description
+    task.referenceLink ?? "",            // Reference Link
+    task.category ?? "",                 // Category
+    task.owner ?? "",                    // Owner
+    task.requestedBy ?? "",              // Requested By
+    task.contactPerson ?? "",            // Contact Person
+    task.status ?? DEFAULTS.TASK_STATUS, // Status
+    task.progress ?? DEFAULTS.PROGRESS,  // Progress (%)
+    task.priority ?? DEFAULTS.PRIORITY,  // Priority
+    task.latestUpdate ?? "",             // Latest Update
+    task.nextStep ?? "",                 // Next Step
+    task.waitingFor ?? "",               // Waiting For
+    task.receivedDate ?? "",             // Received Date
+    task.dueDate ?? "",                  // Due Date
+    task.estimatedHours ?? "",            // Estimated Hours
+    task.actualHours ?? "",               // Actual Hours
+    now,                                  // Created At
+    createdBy,                            // Created By
+    now,                                  // Updated At
+    updatedBy,                            // Updated By
+    "",                                   // Closed At
+    "",                                   // Closed By
   ];
 
   await appendRow(SHEETS.TASKS, row);
 
-  return true;
+  return {
+    success: true,
+    taskId: task.taskId,
+  };
 }
 
 // =========================
@@ -126,24 +161,37 @@ export async function updateTaskStatus(
     taskId
   );
 
-  if (!result) return false;
+  if (!result) {
+    return false;
+  }
 
   const row = [...result.row];
   const headers = result.headers;
+  const now = new Date().toISOString();
 
-  row[headers.indexOf("Status")] = status;
-  row[headers.indexOf("Progress (%)")] = progress;
-  row[headers.indexOf("Updated At")] =
-    new Date().toISOString();
-  row[headers.indexOf("Updated By")] =
-    updatedBy;
+  const setValue = (columnName, value) => {
+    const index = headers.indexOf(columnName);
+
+    if (index === -1) {
+      throw new Error(
+        `Missing column in Tasks sheet: ${columnName}`
+      );
+    }
+
+    row[index] = value;
+  };
+
+  setValue("Status", status);
+  setValue("Progress (%)", progress);
+  setValue("Updated At", now);
+  setValue("Updated By", updatedBy ?? "");
 
   if (status === "Done") {
-    row[headers.indexOf("Closed At")] =
-      new Date().toISOString();
-
-    row[headers.indexOf("Closed By")] =
-      updatedBy;
+    setValue("Closed At", now);
+    setValue("Closed By", updatedBy ?? "");
+  } else {
+    setValue("Closed At", "");
+    setValue("Closed By", "");
   }
 
   await updateRow(
