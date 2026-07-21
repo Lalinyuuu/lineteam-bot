@@ -1,8 +1,8 @@
 import { displayName } from "../utils/common.js";
-import { handleWorklogCommand } from "./worklogCommands.js";
-import { handleTaskCommand } from "./taskCommands.js";
-import { handleProjectCommand } from "./projectCommands.js";
-import { handleContactCommand } from "./contactCommands.js";
+import { handleWorklogCommand } from "./worklogCommand.js";
+import { handleTaskCommand } from "./taskCommand.js";
+import { handleProjectCommand } from "./projectCommand.js";
+import { handleContactCommand } from "./contactCommand.js";
 
 export function helpText() {
   return [

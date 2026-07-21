@@ -1,12 +1,12 @@
 import {
   getProjects,
-} from "../services/projectServices.js";
+} from "../services/projectService.js";
 
 import {
   getTodayLogs,
   addWorkLog,
   getTodaySummary,
-} from "../services/worklogServices.js";
+} from "../services/worklogService.js";
 
 import {
   bangkokDate,
@@ -18,7 +18,7 @@ import {
   normalizeStatus,
 } from "../utils/parser.js";
 
-import { resolveProject } from "./projectCommands.js";
+import { resolveProject } from "./projectCommand.js";
 
 export async function addQuickUpdate(
   text,

@@ -3,12 +3,12 @@ import {
   getProject,
   getProjectByCode,
   createProject,
-} from "../services/projectServices.js";
+} from "../services/projectService.js";
 
 import { getProjectTasks } from "../services/taskService.js";
 import { newId } from "../utils/common.js";
 import { parseFields } from "../utils/parser.js";
-import { formatTasks } from "./taskCommands.js";
+import { formatTasks } from "./taskCommand.js";
 
 export async function resolveProject(value) {
   if (!value) {

@@ -18,7 +18,7 @@ import {
   normalizeCategory,
 } from "../utils/parser.js";
 
-import { resolveProject } from "./projectCommands.js";
+import { resolveProject } from "./projectCommand.js";
 
 export function formatTask(task, index) {
   const status = task.Status || "To Do";
