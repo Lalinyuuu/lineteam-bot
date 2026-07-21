@@ -3,7 +3,27 @@ import { HEADERS } from "./config.js";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
-export const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+export function normalizeSpreadsheetId(value) {
+  if (!value || typeof value !== "string") {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return trimmedValue;
+  }
+
+  const urlMatch = trimmedValue.match(/\/d\/([a-zA-Z0-9-_]+)/i);
+
+  if (urlMatch?.[1]) {
+    return urlMatch[1];
+  }
+
+  return trimmedValue;
+}
+
+export const SPREADSHEET_ID = normalizeSpreadsheetId(process.env.SPREADSHEET_ID);
 
 let sheetsClient = null;
 
