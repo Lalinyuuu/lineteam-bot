@@ -1,4 +1,4 @@
-import { SHEETS } from "../api/config.js";
+import { SHEETS } from "../config.js";
 import {
   getObjects,
  appendRow,
@@ -6,16 +6,16 @@ import {
   updateRow,
 } from "../api/sheets.js";
 
-// =========================
+
 // Get All Contacts
-// =========================
+
 
 export async function getContacts() {
   return await getObjects(SHEETS.CONTACTS);
 }
 
 // =========================
-// Get Contact By ID
+// Get Contact By ID 
 // =========================
 
 export async function getContact(contactId) {
