@@ -244,7 +244,7 @@ function normalizeText(text = "") {
 // =========================
 
 function mapNaturalCommand(text) {
-  const value = normalizeText(text);
+  const value = normalizeText(text).replace(/\s+/g, " ");
   const lower = value.toLowerCase();
 
   const exactCommands = {
@@ -286,7 +286,7 @@ function mapNaturalCommand(text) {
     เพิ่มงาน: "/task add",
     สร้างงาน: "/task add",
     เพิ่มtask: "/task add",
-    เพิ่ม task: "/task add",
+    "เพิ่ม task": "/task add",
 
     // Projects
     โปรเจกต์: "/project-guide",
@@ -300,7 +300,7 @@ function mapNaturalCommand(text) {
     เพิ่มโปรเจกต์: "/project add",
     สร้างโปรเจกต์: "/project add",
     เพิ่มproject: "/project add",
-    เพิ่ม project: "/project add",
+    "เพิ่ม project": "/project add",
 
     // Work logs
     วันนี้: "/today",
@@ -324,7 +324,7 @@ function mapNaturalCommand(text) {
     เพิ่มผู้ติดต่อ: "/contact add",
     สร้างผู้ติดต่อ: "/contact add",
     เพิ่มcontact: "/contact add",
-    เพิ่ม contact: "/contact add",
+    "เพิ่ม contact": "/contact add",
   };
 
   if (exactCommands[lower]) {
