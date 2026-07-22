@@ -248,27 +248,75 @@ export function normalizeCategory(text = "") {
 }
 
 export function inferActivity(text = "") {
-  if (/ประชุม|meeting/i.test(text)) {
+  const value = String(text).toLowerCase().trim();
+
+  if (
+    /รับงาน|ได้รับมอบหมาย|มอบหมายงาน|รับเรื่อง|ได้รับเรื่อง|ส่งงานมา|ได้รับข้อมูล/.test(
+      value
+    )
+  ) {
+    return "Receive";
+  }
+
+  if (
+    /ประชุม|meeting|หารือ|ประชุมร่วม|เข้าร่วมประชุม/.test(
+      value
+    )
+  ) {
     return "Meeting";
   }
 
   if (
-    /ประสาน|coordinate|โทรหา|ติดต่อ/i.test(text)
+    /ประสาน|ติดต่อ|ตามงาน|สอบถาม|แจ้งให้|คุยกับ/.test(
+      value
+    )
   ) {
     return "Coordinate";
   }
 
-  if (/รอ|waiting|pending/i.test(text)) {
+  if (
+    /รอ|waiting|อยู่ระหว่างรอ|ติดตามผล/.test(
+      value
+    )
+  ) {
     return "Waiting";
   }
 
-  if (/เสร็จ|done|เรียบร้อย/i.test(text)) {
+  if (
+    /เสร็จแล้ว|เรียบร้อยแล้ว|ดำเนินการแล้ว|ส่งแล้ว|ปิดงาน|done/.test(
+      value
+    )
+  ) {
     return "Done";
   }
 
-  if (/รับเรื่อง|ได้รับ|receive/i.test(text)) {
-    return "Receive";
+  if (
+    /ตรวจสอบ|ตรวจทาน|review|พิจารณา/.test(
+      value
+    )
+  ) {
+    return "Review";
   }
 
-  return "Working";
+  if (
+    /โทร|โทรศัพท์|call/.test(value)
+  ) {
+    return "Call";
+  }
+
+  if (
+    /อีเมล|email|ส่งเมล/.test(value)
+  ) {
+    return "Email";
+  }
+
+  if (
+    /ทำ|จัดทำ|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|working/.test(
+      value
+    )
+  ) {
+    return "Working";
+  }
+
+  return "Note";
 }
