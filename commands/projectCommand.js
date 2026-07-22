@@ -50,6 +50,45 @@ export async function resolveProject(value) {
   );
 }
 
+function formatProjectDetails(project) {
+  const projectCode =
+    project["Project Code"] || "-";
+
+  const projectName =
+    project["Project Name"] || "-";
+
+  const description =
+    project.Description || "-";
+
+  const manager =
+    project["Project Manager"] || "-";
+
+  const status =
+    project.Status || "-";
+
+  const priority =
+    project.Priority || "-";
+
+  const startDate =
+    project["Start Date"] || "-";
+
+  const endDate =
+    project["End Date"] || "-";
+
+  return [
+    `📁 ${projectName}`,
+    "",
+    `รหัส: ${projectCode}`,
+    `ผู้ดูแล: ${manager}`,
+    `สถานะ: ${status}`,
+    `ความสำคัญ: ${priority}`,
+    `เริ่ม: ${startDate}`,
+    `สิ้นสุด: ${endDate}`,
+    "",
+    `รายละเอียด: ${description}`,
+  ].join("\n");
+}
+
 export async function handleProjectCommand(text) {
   if (/^\/projects$/i.test(text)) {
     const projects = await getProjects();
@@ -64,7 +103,7 @@ export async function handleProjectCommand(text) {
           `${index + 1}. ` +
           `${project["Project Code"]} — ` +
           `${project["Project Name"]} ` +
-          `(${project.Status})`
+          `(${project.Status || "-"})`
       )
       .join("\n");
 
@@ -85,7 +124,9 @@ export async function handleProjectCommand(text) {
       ].join("\n");
     }
 
-    const existing = await getProjectByCode(fields.code);
+    const existing = await getProjectByCode(
+      fields.code
+    );
 
     if (existing) {
       return `มี Project Code ${fields.code} อยู่แล้ว`;
@@ -109,7 +150,9 @@ export async function handleProjectCommand(text) {
     ].join("\n");
   }
 
-  const projectSearch = text.match(/^\/project\s+(.+)$/i);
+  const projectSearch = text.match(
+    /^\/project\s+(.+)$/i
+  );
 
   if (projectSearch) {
     const project = await resolveProject(
@@ -120,14 +163,31 @@ export async function handleProjectCommand(text) {
       return "ไม่พบโปรเจกต์";
     }
 
+    const projectDetails =
+      formatProjectDetails(project);
+
     const tasks = await getProjectTasks(
       project["Project ID"]
     );
 
-    return formatTasks(
-      `📁 ${project["Project Name"]}`,
+    if (!tasks.length) {
+      return [
+        projectDetails,
+        "",
+        "📝 ยังไม่มี Task ในโปรเจกต์นี้",
+      ].join("\n");
+    }
+
+    const taskDetails = formatTasks(
+      "✅ รายการงาน",
       tasks
     );
+
+    return [
+      projectDetails,
+      "",
+      taskDetails,
+    ].join("\n");
   }
 
   return null;
