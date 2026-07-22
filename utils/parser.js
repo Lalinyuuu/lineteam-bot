@@ -82,7 +82,7 @@ export function parseFields(text) {
     line: "line",
   };
 
-  for (const rawLine of text.split(/\r?\n/)) {
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
     const line = rawLine.trim();
 
     if (!line) {
@@ -118,7 +118,7 @@ export function normalizeStatus(text = "") {
 
   if (
     value === "done" ||
-    /เสร็จ|เรียบร้อย|เสร็จแล้ว/.test(value)
+    /เสร็จ|เรียบร้อย|เสร็จแล้ว|ส่งแล้ว|ปิดงาน/.test(value)
   ) {
     return "Done";
   }
@@ -126,7 +126,7 @@ export function normalizeStatus(text = "") {
   if (
     value === "waiting" ||
     value === "pending" ||
-    /รอ|ติด/.test(value)
+    /รอ|ติด|รอข้อมูล|รอเอกสาร|รอการตอบกลับ/.test(value)
   ) {
     return "Waiting";
   }
@@ -134,9 +134,16 @@ export function normalizeStatus(text = "") {
   if (
     value === "doing" ||
     value === "in progress" ||
-    /กำลัง|ดำเนิน/.test(value)
+    /กำลัง|ดำเนิน|อยู่ระหว่างทำ/.test(value)
   ) {
     return "Doing";
+  }
+
+  if (
+    value === "review" ||
+    /ตรวจสอบ|ตรวจทาน|รอตรวจ|พิจารณา/.test(value)
+  ) {
+    return "Review";
   }
 
   if (
@@ -228,10 +235,16 @@ export function normalizeCategory(text = "") {
     "focus group": "Focus Group",
     focusgroup: "Focus Group",
     โฟกัสกรุ๊ป: "Focus Group",
-    โฟกัสกรุ๊ป: "Focus Group",
 
     support: "Support",
     สนับสนุน: "Support",
+
+    training: "Training",
+    อบรม: "Training",
+
+    research: "Research",
+    ศึกษา: "Research",
+    วิจัย: "Research",
 
     other: "Other",
     อื่นๆ: "Other",
@@ -248,70 +261,88 @@ export function normalizeCategory(text = "") {
 }
 
 export function inferActivity(text = "") {
-  const value = String(text).toLowerCase().trim();
+  const value = String(text)
+    .toLowerCase()
+    .trim();
 
+  // รับงาน / รับเรื่อง
   if (
-    /รับงาน|ได้รับมอบหมาย|มอบหมายงาน|รับเรื่อง|ได้รับเรื่อง|ส่งงานมา|ได้รับข้อมูล/.test(
+    /รับงาน|ได้รับมอบหมาย|มอบหมายงาน|รับเรื่อง|ได้รับเรื่อง|ส่งงานมา|ได้รับข้อมูล|ได้รับเอกสาร/.test(
       value
     )
   ) {
     return "Receive";
   }
 
+  // ประสานงาน
+  // ต้องอยู่ก่อน Meeting เพราะข้อความอาจมีคำว่า "ห้องประชุม"
   if (
-    /ประชุม|meeting|หารือ|ประชุมร่วม|เข้าร่วมประชุม/.test(
-      value
-    )
-  ) {
-    return "Meeting";
-  }
-
-  if (
-    /ประสาน|ติดต่อ|ตามงาน|สอบถาม|แจ้งให้|คุยกับ/.test(
+    /ประสาน|ประสานงาน|ติดต่อ|ตามงาน|ติดตามงาน|สอบถาม|แจ้งให้|คุยกับ|ขอข้อมูล|นัดหมาย|ยืนยันนัด|เช็กคิว|เช็คคิว|จองห้อง|จองสถานที่/.test(
       value
     )
   ) {
     return "Coordinate";
   }
 
+  // รอ
   if (
-    /รอ|waiting|อยู่ระหว่างรอ|ติดตามผล/.test(
+    /รอ|waiting|pending|อยู่ระหว่างรอ|รอผล|รอข้อมูล|รอเอกสาร|รอการตอบกลับ/.test(
       value
     )
   ) {
     return "Waiting";
   }
 
+  // เสร็จแล้ว
+  // ต้องอยู่ก่อน Working เพราะบางประโยคมีคำว่า "ดำเนินการ"
   if (
-    /เสร็จแล้ว|เรียบร้อยแล้ว|ดำเนินการแล้ว|ส่งแล้ว|ปิดงาน|done/.test(
+    /เสร็จแล้ว|เสร็จเรียบร้อย|เรียบร้อยแล้ว|ดำเนินการแล้ว|ดำเนินการเสร็จ|ส่งแล้ว|ส่งเรียบร้อย|ปิดงาน|แล้วเสร็จ|\bdone\b/.test(
       value
     )
   ) {
     return "Done";
   }
 
+  // โทร
   if (
-    /ตรวจสอบ|ตรวจทาน|review|พิจารณา/.test(
+    /โทรหา|โทรคุย|โทรศัพท์|โทรประสาน|\bcall\b/.test(
+      value
+    )
+  ) {
+    return "Call";
+  }
+
+  // Email
+  if (
+    /ส่งอีเมล|ส่งเมล|ตอบอีเมล|ตอบเมล|อีเมล|\bemail\b/.test(
+      value
+    )
+  ) {
+    return "Email";
+  }
+
+  // ตรวจสอบ / Review
+  if (
+    /ตรวจสอบ|ตรวจทาน|ทบทวน|พิจารณา|เช็กเอกสาร|เช็คเอกสาร|\breview\b/.test(
       value
     )
   ) {
     return "Review";
   }
 
+  // ประชุม
+  // ไม่ใช้ /ประชุม/ แบบกว้าง เพราะจะไปชนคำว่า "ห้องประชุม"
   if (
-    /โทร|โทรศัพท์|call/.test(value)
+    /^(ประชุม|เข้าประชุม|ร่วมประชุม|นัดประชุม|หารือ)|ประชุมกับ|ประชุมเรื่อง|ประชุมร่วม|เข้าร่วมประชุม|\bmeeting\b/.test(
+      value
+    )
   ) {
-    return "Call";
+    return "Meeting";
   }
 
+  // ลงมือทำงาน
   if (
-    /อีเมล|email|ส่งเมล/.test(value)
-  ) {
-    return "Email";
-  }
-
-  if (
-    /ทำ|จัดทำ|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|working/.test(
+    /จัดทำ|ทำรายงาน|ทำเอกสาร|แก้ไข|ปรับแก้|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|เขียน|สรุป|ออกแบบ|พัฒนา|\bworking\b/.test(
       value
     )
   ) {
