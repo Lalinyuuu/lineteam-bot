@@ -186,7 +186,7 @@ function taskGuideText() {
     "/task add",
     "Project: P50",
     "Task: จัดทำรายงานผลการศึกษา",
-    "Owner: ยู",
+    "Project Manager: ยู",
     "Due: 2026-07-30",
     "Priority: High",
     "",
