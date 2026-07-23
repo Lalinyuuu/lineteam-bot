@@ -1,4 +1,6 @@
-import { displayName } from "../utils/common.js";
+import {
+  displayName,
+} from "../utils/common.js";
 
 import {
   handleWorklogCommand,
@@ -15,6 +17,10 @@ import {
 import {
   handleContactCommand,
 } from "./contactCommand.js";
+
+import {
+  handleContextCommand,
+} from "./contextCommand.js";
 
 // =========================
 // Main Menu
@@ -40,6 +46,7 @@ export function menuText() {
     "• ดูงานของฉัน",
     "• โปรเจกต์ทั้งหมด",
     "• สรุปวันนี้",
+    "• ใช้โปรเจกต์ P50",
   ].join("\n");
 }
 
@@ -55,10 +62,7 @@ export function helpText() {
     "📝 บันทึกงาน",
     "━━━━━━━━━━━━━━",
     "",
-    "พิมพ์:",
-    "บันทึกงาน",
-    "",
-    "หรือบันทึกทันที:",
+    "บันทึกรายการเดียว:",
     "/update ประชุมกับพี่บอยเรื่อง Project 50",
     "",
     "บันทึกหลายรายการ:",
@@ -67,26 +71,36 @@ export function helpText() {
     "10:30 รับงานจากพี่กบ",
     "13:00 รอ BA ส่ง Flow",
     "",
-    "ระบุโปรเจกต์ให้ทุกรายการ:",
+    "ระบุโปรเจกต์ในข้อความ:",
     "/update",
     "Project: P50",
     "09:00 ประชุมกับพี่บอย",
     "13:00 ทำรายงาน",
     "",
     "━━━━━━━━━━━━━━",
+    "📌 โปรเจกต์ปัจจุบัน",
+    "━━━━━━━━━━━━━━",
+    "",
+    "ตั้งโปรเจกต์:",
+    "ใช้โปรเจกต์ P50",
+    "",
+    "ดูโปรเจกต์ปัจจุบัน:",
+    "โปรเจกต์ปัจจุบัน",
+    "",
+    "ล้างโปรเจกต์:",
+    "ล้างโปรเจกต์",
+    "",
+    "━━━━━━━━━━━━━━",
     "✅ งานของฉัน",
     "━━━━━━━━━━━━━━",
     "",
-    "พิมพ์:",
-    "งานของฉัน",
+    "งานของฉัน:",
     "/my",
     "",
     "งานที่รอ:",
-    "งานที่รอ",
     "/waiting",
     "",
     "งานที่เสร็จ:",
-    "งานที่เสร็จ",
     "/done",
     "",
     "━━━━━━━━━━━━━━",
@@ -94,16 +108,12 @@ export function helpText() {
     "━━━━━━━━━━━━━━",
     "",
     "ดูทั้งหมด:",
-    "โปรเจกต์ทั้งหมด",
     "/projects",
     "",
     "เปิดโปรเจกต์:",
-    "P50",
-    "Project 50",
     "/project P50",
     "",
     "เพิ่มโปรเจกต์:",
-    "เพิ่มโปรเจกต์",
     "/project add",
     "",
     "━━━━━━━━━━━━━━",
@@ -111,11 +121,9 @@ export function helpText() {
     "━━━━━━━━━━━━━━",
     "",
     "งานวันนี้:",
-    "งานวันนี้",
     "/today",
     "",
     "สรุปวันนี้:",
-    "สรุปวันนี้",
     "/summary",
     "",
     "━━━━━━━━━━━━━━",
@@ -123,11 +131,9 @@ export function helpText() {
     "━━━━━━━━━━━━━━",
     "",
     "ดูทั้งหมด:",
-    "ผู้ติดต่อทั้งหมด",
     "/contacts",
     "",
     "เพิ่มผู้ติดต่อ:",
-    "เพิ่มผู้ติดต่อ",
     "/contact add",
   ].join("\n");
 }
@@ -143,19 +149,22 @@ function updateGuideText() {
     "พิมพ์รายละเอียดต่อจาก /update ได้เลย",
     "",
     "ตัวอย่างรายการเดียว:",
-    "/update ประชุมกับพี่บอยเรื่อง Project 50",
+    "/update ประชุมกับพี่xxxxเรื่อง Project 50",
     "",
     "ตัวอย่างหลายรายการ:",
     "/update",
-    "09:00 ประชุมกับพี่บอย",
-    "10:30 รับงานจากพี่กบ",
+    "09:00 ประชุมกับพี่xxxx",
+    "10:30 รับงานจากพี่xxxx",
     "13:00 รอ BA ส่ง Flow",
     "",
     "หากเป็นโปรเจกต์เดียวกัน:",
     "/update",
     "Project: P50",
-    "09:00 ประชุมกับพี่บอย",
+    "09:00 ประชุมกับพี่xxxx",
     "13:00 ทำรายงาน",
+    "",
+    "หากตั้งโปรเจกต์ปัจจุบันไว้แล้ว",
+    "ไม่จำเป็นต้องพิมพ์ Project ซ้ำ",
   ].join("\n");
 }
 
@@ -209,7 +218,10 @@ function projectGuideText() {
     "Oracle",
     "",
     "เพิ่มโปรเจกต์:",
-    "เพิ่มโปรเจกต์",
+    "/project add",
+    "",
+    "ตั้งโปรเจกต์ปัจจุบัน:",
+    "ใช้โปรเจกต์ P50",
   ].join("\n");
 }
 
@@ -225,7 +237,16 @@ function contactGuideText() {
     "ผู้ติดต่อทั้งหมด",
     "",
     "เพิ่มผู้ติดต่อ:",
-    "เพิ่มผู้ติดต่อ",
+    "/contact add",
+    "Name: น้องฝ้าย",
+    "Nickname: ฝ้าย",
+    "Team: ทีม",
+    "Company: CKC",
+    "Position: Project Coordinator",
+    "Phone: 08x-xxx-xxxx",
+    "Email: fai@example.com",
+    "LINE: fai-line",
+    "Remark: ผู้ประสานงานโครงการ",
   ].join("\n");
 }
 
@@ -235,8 +256,9 @@ function contactGuideText() {
 
 function normalizeText(text = "") {
   return String(text)
-    .trim()
-    .replace(/\u200B/g, "");
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u200B/g, "")
+    .trim();
 }
 
 // =========================
@@ -244,8 +266,21 @@ function normalizeText(text = "") {
 // =========================
 
 function mapNaturalCommand(text) {
-  const value = normalizeText(text).replace(/\s+/g, " ");
-  const lower = value.toLowerCase();
+  /*
+   * originalValue เก็บ newline เอาไว้
+   * สำคัญสำหรับ /update หลายรายการ
+   */
+  const originalValue =
+    normalizeText(text);
+
+  /*
+   * compactValue ใช้เฉพาะตรวจคำสั่งสั้น ๆ
+   */
+  const compactValue =
+    originalValue.replace(/\s+/g, " ");
+
+  const lower =
+    compactValue.toLowerCase();
 
   const exactCommands = {
     // Menu
@@ -282,6 +317,7 @@ function mapNaturalCommand(text) {
     งานที่เสร็จ: "/done",
     งานเสร็จ: "/done",
     เสร็จแล้ว: "/done",
+    done: "/done",
 
     เพิ่มงาน: "/task add",
     สร้างงาน: "/task add",
@@ -291,6 +327,7 @@ function mapNaturalCommand(text) {
     // Projects
     โปรเจกต์: "/project-guide",
     project: "/project-guide",
+
     โปรเจกต์ทั้งหมด: "/projects",
     ดูโปรเจกต์: "/projects",
     ดูโปรเจกต์ทั้งหมด: "/projects",
@@ -316,6 +353,7 @@ function mapNaturalCommand(text) {
     // Contacts
     ผู้ติดต่อ: "/contact-guide",
     ติดต่อ: "/contact-guide",
+
     ผู้ติดต่อทั้งหมด: "/contacts",
     ดูผู้ติดต่อ: "/contacts",
     รายชื่อผู้ติดต่อ: "/contacts",
@@ -331,7 +369,6 @@ function mapNaturalCommand(text) {
     return exactCommands[lower];
   }
 
-  // รองรับหมายเลขในเมนู
   const numberCommands = {
     "1": "/update-guide",
     "2": "/my",
@@ -341,11 +378,15 @@ function mapNaturalCommand(text) {
     "6": "/contacts",
   };
 
-  if (numberCommands[value]) {
-    return numberCommands[value];
+  if (numberCommands[compactValue]) {
+    return numberCommands[compactValue];
   }
 
-  return value;
+  /*
+   * ต้องคืน originalValue
+   * ห้ามคืน compactValue เพราะ newline ของ /update จะหาย
+   */
+  return originalValue;
 }
 
 // =========================
@@ -353,30 +394,50 @@ function mapNaturalCommand(text) {
 // =========================
 
 function shouldTryProjectSearch(text) {
-  const value = normalizeText(text);
+  const value =
+    normalizeText(text);
 
   if (!value) {
     return false;
   }
 
-  // ไม่ลองเปิดเป็น Project เมื่อเป็นคำสั่ง
   if (value.startsWith("/")) {
     return false;
   }
 
-  // ไม่ตีความข้อความหลายบรรทัดเป็นชื่อ Project
   if (value.includes("\n")) {
     return false;
   }
 
-  // ข้อความยาวเกินไปมีแนวโน้มเป็น WorkLog
   if (value.length > 60) {
     return false;
   }
 
-  // ประโยคที่ชัดเจนว่าเป็นกิจกรรม ไม่ควรเอาไปค้น Project
+  /*
+   * ข้อความเหล่านี้เป็น Context Command
+   * ไม่ควรส่งไปค้นโปรเจกต์ธรรมดา
+   */
   if (
-    /ประชุม|ประสาน|ติดต่อ|รับงาน|รับเรื่อง|รอ|จัดทำ|ทำรายงาน|แก้ไข|ส่ง|ตรวจสอบ|โทร|อีเมล/.test(
+    /^(?:ใช้|ตั้ง|เลือก|ล้าง|ยกเลิก)\s*(?:โปรเจกต์|project)/i.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /^(?:โปรเจกต์ปัจจุบัน|current project|project current)$/i.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * ประโยคกิจกรรมไม่ควรถูกตีความเป็นชื่อโปรเจกต์
+   */
+  if (
+    /ประชุม|หารือ|ประสาน|ติดต่อ|รับงาน|รับเรื่อง|รอ|จัดทำ|ทำรายงาน|ทำเอกสาร|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|ส่ง|ตรวจสอบ|ตรวจทาน|โทร|อีเมล/.test(
       value
     )
   ) {
@@ -391,13 +452,17 @@ function shouldTryProjectSearch(text) {
 // =========================
 
 function shouldTryQuickUpdate(text) {
-  const value = normalizeText(text);
+  const value =
+    normalizeText(text);
 
-  if (!value || value.startsWith("/")) {
+  if (
+    !value ||
+    value.startsWith("/")
+  ) {
     return false;
   }
 
-  return /ประชุม|หารือ|ประสาน|ติดต่อ|รับงาน|รับเรื่อง|รอ|จัดทำ|ทำรายงาน|ทำเอกสาร|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|ตรวจสอบ|ตรวจทาน|โทร|อีเมล|ส่งเมล|ส่งแล้ว|เรียบร้อยแล้ว/.test(
+  return /ประชุม|หารือ|ประสาน|ติดต่อ|รับงาน|รับเรื่อง|รอ|จัดทำ|ทำรายงาน|ทำเอกสาร|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|ตรวจสอบ|ตรวจทาน|โทร|อีเมล|ส่งเมล|ส่งแล้ว|เรียบร้อยแล้ว|แจ้ง|เพิ่มสิทธิ์|อัปเดต|อัพเดต/.test(
     value
   );
 }
@@ -410,62 +475,103 @@ export async function handleCommand(
   inputText,
   userId
 ) {
-  const originalText = normalizeText(
-    inputText
-  );
+  const originalText =
+    normalizeText(inputText);
 
   if (!originalText) {
     return menuText();
   }
 
   const text =
-    mapNaturalCommand(originalText);
+    mapNaturalCommand(
+      originalText
+    );
 
-  // เมนู
+  // =========================
+  // Basic Commands
+  // =========================
+
   if (/^\/menu$/i.test(text)) {
     return menuText();
   }
 
-  // Help
   if (/^\/help$/i.test(text)) {
     return helpText();
   }
 
-  // หน้าคำแนะนำ
-  if (/^\/update-guide$/i.test(text)) {
+  if (
+    /^\/update-guide$/i.test(text)
+  ) {
     return updateGuideText();
   }
 
-  if (/^\/task-guide$/i.test(text)) {
+  if (
+    /^\/task-guide$/i.test(text)
+  ) {
     return taskGuideText();
   }
 
-  if (/^\/project-guide$/i.test(text)) {
+  if (
+    /^\/project-guide$/i.test(text)
+  ) {
     return projectGuideText();
   }
 
-  if (/^\/contact-guide$/i.test(text)) {
+  if (
+    /^\/contact-guide$/i.test(text)
+  ) {
     return contactGuideText();
   }
 
-  const reporter = displayName(userId);
+  const reporter =
+    displayName(userId);
 
-  // คำสั่งเดิมทั้งหมด
+  // =========================
+  // Main Command Chain
+  // =========================
+
   const commandResult =
-    (await handleWorklogCommand(
+    /*
+     * Context ต้องตรวจเป็นลำดับแรก เช่น:
+     * ใช้โปรเจกต์ P50
+     * โปรเจกต์ปัจจุบัน
+     * ล้างโปรเจกต์
+     */
+    (await handleContextCommand({
       text,
-      reporter
-    )) ||
+      userId,
+      displayName: reporter,
+    })) ||
+
+    /*
+     * WorkLog ตัวใหม่รับค่าเป็น Object
+     */
+    (await handleWorklogCommand({
+      text,
+      reporter,
+      userId,
+    })) ||
+
     (await handleTaskCommand(
       text,
       reporter
     )) ||
-    (await handleProjectCommand(text)) ||
-    (await handleContactCommand(text));
+
+    (await handleProjectCommand(
+      text
+    )) ||
+
+    (await handleContactCommand(
+      text
+    ));
 
   if (commandResult) {
     return commandResult;
   }
+
+  // =========================
+  // Direct Project Search
+  // =========================
 
   /*
    * รองรับพิมพ์ Code หรือชื่อ Project ตรง ๆ เช่น:
@@ -475,20 +581,17 @@ export async function handleCommand(
    * Project 50
    * Oracle
    */
-  if (shouldTryProjectSearch(originalText)) {
+  if (
+    shouldTryProjectSearch(
+      originalText
+    )
+  ) {
     const projectResult =
       await handleProjectCommand(
         `/project ${originalText}`
       );
 
     if (projectResult) {
-      /*
-       * ป้องกันกรณี handleProjectCommand
-       * ตอบข้อความว่าไม่พบทุกครั้ง
-       *
-       * ถ้าไฟล์ projectCommand.js ใช้ข้อความอื่น
-       * สามารถเพิ่มคำตรวจสอบได้ภายหลัง
-       */
       const resultText =
         String(projectResult);
 
@@ -503,18 +606,32 @@ export async function handleCommand(
     }
   }
 
+  // =========================
+  // Natural Quick Update
+  // =========================
+
   /*
    * รองรับ WorkLog แบบไม่ต้องพิมพ์ /update
    *
-   * เช่น:
-   * ประชุมกับพี่บอยเรื่อง Project 50
+   * ตัวอย่าง:
+   * ประชุมกับxxxเรื่อง Project 50
    */
-  if (shouldTryQuickUpdate(originalText)) {
-    return handleWorklogCommand(
-      `/update ${originalText}`,
-      reporter
-    );
+  if (
+    shouldTryQuickUpdate(
+      originalText
+    )
+  ) {
+    return handleWorklogCommand({
+      text:
+        `/update ${originalText}`,
+      reporter,
+      userId,
+    });
   }
+
+  // =========================
+  // Unknown Command
+  // =========================
 
   return [
     `ไม่เข้าใจคำว่า “${originalText}”`,
@@ -524,6 +641,7 @@ export async function handleCommand(
     "• บันทึกงาน",
     "• งานของฉัน",
     "• โปรเจกต์ทั้งหมด",
+    "• ใช้โปรเจกต์ P50",
     "• สรุปวันนี้",
     "",
     "หรือพิมพ์ /help เพื่อดูวิธีใช้",
