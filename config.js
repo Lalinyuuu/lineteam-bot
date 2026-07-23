@@ -7,6 +7,7 @@ export const SHEETS = {
   TASKS: "Tasks",
   WORKLOG: "WorkLog",
   CONTACTS: "Contacts",
+  USER_CONTEXT: "UserContext",
   LOOKUP: "Lookup",
 };
 
@@ -28,6 +29,7 @@ export const TASK_STATUS = {
   TODO: "To Do",
   DOING: "Doing",
   WAITING: "Waiting",
+  REVIEW: "Review",
   DONE: "Done",
   CANCELLED: "Cancelled",
 };
@@ -57,6 +59,8 @@ export const CATEGORY = {
   INFRASTRUCTURE: "Infrastructure",
   FOCUS_GROUP: "Focus Group",
   SUPPORT: "Support",
+  TRAINING: "Training",
+  RESEARCH: "Research",
   OTHER: "Other",
 };
 
@@ -109,17 +113,20 @@ export const DEFAULTS = {
 
 export const HEADERS = {
   PROJECTS: [
-  "Project ID",
-  "Project Code",
-  "Project Name TH",
-  "Project Name EN",
-  "Aliases",
-  "Description",
-  "Project Manager",
-  "Status",
-  "Created At",
-  "Updated At",
-],
+    "Project ID",
+    "Project Code",
+    "Project Name TH",
+    "Project Name EN",
+    "Aliases",
+    "Description",
+    "Project Manager",
+    "Status",
+    "Priority",
+    "Start Date",
+    "End Date",
+    "Created At",
+    "Updated At",
+  ],
 
   TASKS: [
     "Task ID",
@@ -181,6 +188,32 @@ export const HEADERS = {
     "Email",
     "LINE",
     "Remark",
+    "Created At",
+    "Updated At",
+  ],
+
+  USER_CONTEXT: [
+    "User ID",
+    "Display Name",
+    "Current Project ID",
+    "Current Project Code",
+    "Current Project Name",
+    "Current Task ID",
+    "Current Task Name",
+    "Current Contact",
+    "Current Status",
+    "Last Activity",
+    "Updated At",
+  ],
+
+  LOOKUP: [
+    "Type",
+    "Code",
+    "Name",
+    "Value",
+    "Description",
+    "Sort Order",
+    "Active",
     "Created At",
     "Updated At",
   ],
