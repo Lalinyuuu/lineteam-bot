@@ -109,18 +109,17 @@ export const DEFAULTS = {
 
 export const HEADERS = {
   PROJECTS: [
-    "Project ID",
-    "Project Code",
-    "Project Name",
-    "Description",
-    "Project Manager",
-    "Status",
-    "Priority",
-    "Start Date",
-    "End Date",
-    "Created At",
-    "Updated At",
-  ],
+  "Project ID",
+  "Project Code",
+  "Project Name TH",
+  "Project Name EN",
+  "Aliases",
+  "Description",
+  "Project Manager",
+  "Status",
+  "Created At",
+  "Updated At",
+],
 
   TASKS: [
     "Task ID",
