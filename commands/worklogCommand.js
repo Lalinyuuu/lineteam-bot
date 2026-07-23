@@ -9,6 +9,10 @@ import {
 } from "../services/worklogService.js";
 
 import {
+  getUserContext,
+} from "../services/userContextService.js";
+
+import {
   bangkokDate,
   newId,
 } from "../utils/common.js";
@@ -62,9 +66,14 @@ function extractTime(line) {
   }
 
   return {
-    time: `${String(hour).padStart(2, "0")}:${String(
-      minute
-    ).padStart(2, "0")}`,
+    time: `${String(hour).padStart(
+      2,
+      "0"
+    )}:${String(minute).padStart(
+      2,
+      "0"
+    )}`,
+
     description: match[3].trim(),
   };
 }
@@ -72,8 +81,13 @@ function extractTime(line) {
 /**
  * หา Project จากข้อความ
  */
-function findProjectFromText(text, projects) {
-  const normalizedText = String(text || "")
+function findProjectFromText(
+  text,
+  projects
+) {
+  const normalizedText = String(
+    text || ""
+  )
     .trim()
     .toLowerCase();
 
@@ -83,6 +97,12 @@ function findProjectFromText(text, projects) {
 
   return (
     projects.find((item) => {
+      const projectId = String(
+        item["Project ID"] || ""
+      )
+        .trim()
+        .toLowerCase();
+
       const code = String(
         item["Project Code"] || ""
       )
@@ -96,10 +116,78 @@ function findProjectFromText(text, projects) {
         .toLowerCase();
 
       return (
+        (projectId &&
+          normalizedText.includes(
+            projectId
+          )) ||
         (code &&
-          normalizedText.includes(code)) ||
+          normalizedText.includes(
+            code
+          )) ||
         (name &&
-          normalizedText.includes(name))
+          normalizedText.includes(
+            name
+          ))
+      );
+    }) || null
+  );
+}
+
+/**
+ * หา Project จาก UserContext
+ */
+function findProjectFromContext(
+  context,
+  projects
+) {
+  if (!context) {
+    return null;
+  }
+
+  const currentProjectId = String(
+    context["Current Project ID"] || ""
+  ).trim();
+
+  const currentProjectCode = String(
+    context["Current Project Code"] || ""
+  ).trim();
+
+  const currentProjectName = String(
+    context["Current Project Name"] || ""
+  ).trim();
+
+  if (
+    !currentProjectId &&
+    !currentProjectCode &&
+    !currentProjectName
+  ) {
+    return null;
+  }
+
+  return (
+    projects.find((item) => {
+      const projectId = String(
+        item["Project ID"] || ""
+      ).trim();
+
+      const projectCode = String(
+        item["Project Code"] || ""
+      ).trim();
+
+      const projectName = String(
+        item["Project Name"] || ""
+      ).trim();
+
+      return (
+        (currentProjectId &&
+          projectId ===
+            currentProjectId) ||
+        (currentProjectCode &&
+          projectCode.toLowerCase() ===
+            currentProjectCode.toLowerCase()) ||
+        (currentProjectName &&
+          projectName.toLowerCase() ===
+            currentProjectName.toLowerCase())
       );
     }) || null
   );
@@ -108,7 +196,7 @@ function findProjectFromText(text, projects) {
 /**
  * แยกข้อความเป็นรายการ WorkLog
  *
- * รองรับทั้ง:
+ * รองรับ:
  *
  * /update
  * 09:00 ประชุม
@@ -204,14 +292,18 @@ async function createWorkLog({
 /**
  * บันทึก WorkLog แบบรวดเร็ว
  */
-export async function addQuickUpdate(
+export async function addQuickUpdate({
   text,
-  reporter
-) {
+  reporter,
+  userId,
+}) {
   const rawText = String(text || "");
 
   const cleaned = rawText
-    .replace(/^\/update(?:\s|$)/i, "")
+    .replace(
+      /^\/update(?:\s|$)/i,
+      ""
+    )
     .trim();
 
   console.log(
@@ -238,12 +330,36 @@ export async function addQuickUpdate(
       "Project: P50",
       "09:00 ประชุมกับพี่บอย",
       "13:00 ทำรายงาน",
+      "",
+      "หากตั้งโปรเจกต์ปัจจุบันไว้แล้ว",
+      "ไม่ต้องระบุ Project ซ้ำ",
     ].join("\n");
   }
 
-  const projects = await getProjects();
+  const projects =
+    await getProjects();
 
-  let defaultProject = null;
+  let context = null;
+
+  if (userId) {
+    try {
+      context =
+        await getUserContext(userId);
+    } catch (error) {
+      console.error(
+        "Get UserContext failed:",
+        error
+      );
+    }
+  }
+
+  const contextProject =
+    findProjectFromContext(
+      context,
+      projects
+    );
+
+  let explicitProject = null;
   let content = cleaned;
 
   /**
@@ -267,12 +383,12 @@ export async function addQuickUpdate(
     const projectKeyword =
       explicitProjectMatch[1].trim();
 
-    defaultProject =
+    explicitProject =
       await resolveProject(
         projectKeyword
       );
 
-    if (!defaultProject) {
+    if (!explicitProject) {
       return [
         `❌ ไม่พบโปรเจกต์ ${projectKeyword}`,
         "",
@@ -290,6 +406,22 @@ export async function addQuickUpdate(
   console.log(
     "WORKLOG LINES:",
     JSON.stringify(lines)
+  );
+
+  console.log(
+    "CURRENT PROJECT:",
+    contextProject
+      ? {
+          projectId:
+            contextProject[
+              "Project ID"
+            ],
+          projectCode:
+            contextProject[
+              "Project Code"
+            ],
+        }
+      : null
   );
 
   if (!lines.length) {
@@ -316,15 +448,22 @@ export async function addQuickUpdate(
 
     /**
      * ลำดับการหา Project:
-     * 1. Project จากหัวข้อความ
-     * 2. Project จากข้อความแต่ละรายการ
+     *
+     * 1. Project ที่ระบุไว้บนหัวข้อความ
+     * 2. Project ที่พบในแต่ละรายการ
+     * 3. Project ปัจจุบันจาก UserContext
      */
-    const project =
-      defaultProject ||
+    const projectFromLine =
       findProjectFromText(
         description,
         projects
       );
+
+    const project =
+      explicitProject ||
+      projectFromLine ||
+      contextProject ||
+      null;
 
     try {
       const result =
@@ -413,10 +552,11 @@ export async function addQuickUpdate(
 /**
  * จัดการคำสั่ง WorkLog
  */
-export async function handleWorklogCommand(
+export async function handleWorklogCommand({
   text,
-  reporter
-) {
+  reporter,
+  userId,
+}) {
   const normalizedText =
     String(text || "").trim();
 
@@ -427,13 +567,18 @@ export async function handleWorklogCommand(
       normalizedText
     )
   ) {
-    return addQuickUpdate(
-      normalizedText,
-      reporter
-    );
+    return addQuickUpdate({
+      text: normalizedText,
+      reporter,
+      userId,
+    });
   }
 
-  if (/^\/today$/i.test(normalizedText)) {
+  if (
+    /^\/today$/i.test(
+      normalizedText
+    )
+  ) {
     const logs =
       await getTodayLogs();
 
