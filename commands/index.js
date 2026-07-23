@@ -103,6 +103,9 @@ export function helpText() {
     "งานที่เสร็จ:",
     "/done",
     "",
+    "เพิ่มงาน:",
+    "/task add",
+    "",
     "━━━━━━━━━━━━━━",
     "📁 โปรเจกต์",
     "━━━━━━━━━━━━━━",
@@ -186,9 +189,15 @@ function taskGuideText() {
     "/task add",
     "Project: P50",
     "Task: จัดทำรายงานผลการศึกษา",
-    "Project Manager: ยู",
-    "Due: 2026-07-30",
+    "Category: Report",
+    "Owner: ยู",
+    "Status: To Do",
+    "Progress: 0",
     "Priority: High",
+    "Due Date: 2026-07-30",
+    "",
+    "ถ้าตั้งโปรเจกต์ด้วย /use แล้ว",
+    "สามารถไม่ใส่ Project ได้",
     "",
     "อัปเดตความคืบหน้า:",
     "/task update TASK-ID Doing 70",
@@ -267,17 +276,31 @@ function normalizeText(text = "") {
 
 function mapNaturalCommand(text) {
   /*
-   * originalValue เก็บ newline เอาไว้
-   * สำคัญสำหรับ /update หลายรายการ
+   * originalValue ต้องเก็บ newline เอาไว้
+   * สำหรับ /update, /task add, /project add
    */
   const originalValue =
     normalizeText(text);
 
+  if (!originalValue) {
+    return "";
+  }
+
   /*
-   * compactValue ใช้เฉพาะตรวจคำสั่งสั้น ๆ
+   * คำสั่งที่ขึ้นต้นด้วย /
+   * ต้องส่งต่อทั้งข้อความโดยไม่แปลง
+   */
+  if (originalValue.startsWith("/")) {
+    return originalValue;
+  }
+
+  /*
+   * compactValue ใช้เฉพาะตรวจคำสั่งสั้น
    */
   const compactValue =
-    originalValue.replace(/\s+/g, " ");
+    originalValue
+      .replace(/\s+/g, " ")
+      .trim();
 
   const lower =
     compactValue.toLowerCase();
@@ -326,16 +349,24 @@ function mapNaturalCommand(text) {
 
     // Projects
     โปรเจกต์: "/project-guide",
+    โปรเจ็ค: "/project-guide",
+    โปรเจค: "/project-guide",
     project: "/project-guide",
 
     โปรเจกต์ทั้งหมด: "/projects",
+    โปรเจ็คทั้งหมด: "/projects",
+    โปรเจคทั้งหมด: "/projects",
     ดูโปรเจกต์: "/projects",
+    ดูโปรเจ็ค: "/projects",
     ดูโปรเจกต์ทั้งหมด: "/projects",
     รายการโปรเจกต์: "/projects",
     projects: "/projects",
 
     เพิ่มโปรเจกต์: "/project add",
+    เพิ่มโปรเจ็ค: "/project add",
+    เพิ่มโปรเจค: "/project add",
     สร้างโปรเจกต์: "/project add",
+    สร้างโปรเจ็ค: "/project add",
     เพิ่มproject: "/project add",
     "เพิ่ม project": "/project add",
 
@@ -378,13 +409,30 @@ function mapNaturalCommand(text) {
     "6": "/contacts",
   };
 
-  if (numberCommands[compactValue]) {
-    return numberCommands[compactValue];
+  if (
+    numberCommands[compactValue]
+  ) {
+    return numberCommands[
+      compactValue
+    ];
+  }
+
+  // =========================
+  // Use Current Project
+  // =========================
+
+  const useProjectMatch =
+    compactValue.match(
+      /^(?:ใช้|เลือก|ตั้ง)\s*(?:โปรเจกต์|โปรเจ็ค|โปรเจค|project)\s+(.+)$/i
+    );
+
+  if (useProjectMatch) {
+    return `/use ${useProjectMatch[1].trim()}`;
   }
 
   /*
-   * ต้องคืน originalValue
-   * ห้ามคืน compactValue เพราะ newline ของ /update จะหาย
+   * คืนข้อความเดิม
+   * เพื่อรักษา newline
    */
   return originalValue;
 }
@@ -414,11 +462,11 @@ function shouldTryProjectSearch(text) {
   }
 
   /*
-   * ข้อความเหล่านี้เป็น Context Command
-   * ไม่ควรส่งไปค้นโปรเจกต์ธรรมดา
+   * Context Command
+   * ไม่ควรส่งไปค้น Project ทั่วไป
    */
   if (
-    /^(?:ใช้|ตั้ง|เลือก|ล้าง|ยกเลิก)\s*(?:โปรเจกต์|project)/i.test(
+    /^(?:ใช้|ตั้ง|เลือก|ล้าง|ยกเลิก)\s*(?:โปรเจกต์|โปรเจ็ค|โปรเจค|project)/i.test(
       value
     )
   ) {
@@ -426,7 +474,7 @@ function shouldTryProjectSearch(text) {
   }
 
   if (
-    /^(?:โปรเจกต์ปัจจุบัน|current project|project current)$/i.test(
+    /^(?:โปรเจกต์ปัจจุบัน|โปรเจ็คปัจจุบัน|current project|project current)$/i.test(
       value
     )
   ) {
@@ -434,7 +482,8 @@ function shouldTryProjectSearch(text) {
   }
 
   /*
-   * ประโยคกิจกรรมไม่ควรถูกตีความเป็นชื่อโปรเจกต์
+   * ประโยคกิจกรรม
+   * ไม่ควรถูกตีความเป็นชื่อ Project
    */
   if (
     /ประชุม|หารือ|ประสาน|ติดต่อ|รับงาน|รับเรื่อง|รอ|จัดทำ|ทำรายงาน|ทำเอกสาร|แก้ไข|เตรียม|รวบรวม|ศึกษา|ดำเนินการ|ส่ง|ตรวจสอบ|ตรวจทาน|โทร|อีเมล/.test(
@@ -500,25 +549,33 @@ export async function handleCommand(
   }
 
   if (
-    /^\/update-guide$/i.test(text)
+    /^\/update-guide$/i.test(
+      text
+    )
   ) {
     return updateGuideText();
   }
 
   if (
-    /^\/task-guide$/i.test(text)
+    /^\/task-guide$/i.test(
+      text
+    )
   ) {
     return taskGuideText();
   }
 
   if (
-    /^\/project-guide$/i.test(text)
+    /^\/project-guide$/i.test(
+      text
+    )
   ) {
     return projectGuideText();
   }
 
   if (
-    /^\/contact-guide$/i.test(text)
+    /^\/contact-guide$/i.test(
+      text
+    )
   ) {
     return contactGuideText();
   }
@@ -532,10 +589,7 @@ export async function handleCommand(
 
   const commandResult =
     /*
-     * Context ต้องตรวจเป็นลำดับแรก เช่น:
-     * ใช้โปรเจกต์ P50
-     * โปรเจกต์ปัจจุบัน
-     * ล้างโปรเจกต์
+     * Context ต้องตรวจลำดับแรก
      */
     (await handleContextCommand({
       text,
@@ -544,7 +598,7 @@ export async function handleCommand(
     })) ||
 
     /*
-     * WorkLog ตัวใหม่รับค่าเป็น Object
+     * WorkLog รับ Object
      */
     (await handleWorklogCommand({
       text,
@@ -552,18 +606,30 @@ export async function handleCommand(
       userId,
     })) ||
 
-    (await handleTaskCommand(
+    /*
+     * Task รับ Object
+     * จุดนี้คือส่วนที่แก้สำคัญ
+     */
+    (await handleTaskCommand({
       text,
       reporter,
       userId,
-    )) ||
+    })) ||
 
+    /*
+     * Project ใช้ signature เดิม
+     */
     (await handleProjectCommand(
-      text
+      text,
+      reporter
     )) ||
 
+    /*
+     * Contact ใช้ signature เดิม
+     */
     (await handleContactCommand(
-      text
+      text,
+      reporter
     ));
 
   if (commandResult) {
@@ -575,10 +641,10 @@ export async function handleCommand(
   // =========================
 
   /*
-   * รองรับพิมพ์ Code หรือชื่อ Project ตรง ๆ เช่น:
+   * รองรับพิมพ์ Code หรือชื่อ Project ตรง ๆ
    *
    * P50
-   * 69DDPM001
+   * DDPM001
    * Project 50
    * Oracle
    */
@@ -589,7 +655,8 @@ export async function handleCommand(
   ) {
     const projectResult =
       await handleProjectCommand(
-        `/project ${originalText}`
+        `/project ${originalText}`,
+        reporter
       );
 
     if (projectResult) {
@@ -597,7 +664,7 @@ export async function handleCommand(
         String(projectResult);
 
       const notFound =
-        /ไม่พบโปรเจกต์|ไม่พบ project|ไม่พบข้อมูล/i.test(
+        /ไม่พบโปรเจกต์|ไม่พบโปรเจ็ค|ไม่พบ project|ไม่พบข้อมูล/i.test(
           resultText
         );
 
@@ -612,10 +679,7 @@ export async function handleCommand(
   // =========================
 
   /*
-   * รองรับ WorkLog แบบไม่ต้องพิมพ์ /update
-   *
-   * ตัวอย่าง:
-   * ประชุมกับxxxเรื่อง Project 50
+   * WorkLog แบบไม่ต้องพิมพ์ /update
    */
   if (
     shouldTryQuickUpdate(
@@ -641,6 +705,7 @@ export async function handleCommand(
     "• เมนู",
     "• บันทึกงาน",
     "• งานของฉัน",
+    "• เพิ่มงาน",
     "• โปรเจกต์ทั้งหมด",
     "• ใช้โปรเจกต์ P50",
     "• สรุปวันนี้",
