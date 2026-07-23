@@ -18,10 +18,74 @@ import {
   normalizeCategory,
 } from "../utils/parser.js";
 
-import { resolveProject } from "./projectCommand.js";
+import {
+  resolveProject,
+} from "./projectCommand.js";
 
-export function formatTask(task, index) {
-  const status = task.Status || "To Do";
+import {
+  getUserContext,
+} from "./contextCommand.js";
+
+// =========================
+// Helpers
+// =========================
+
+function normalize(value) {
+  return String(value ?? "").trim();
+}
+
+function getProjectName(project) {
+  return (
+    normalize(
+      project?.["Project Name TH"]
+    ) ||
+    normalize(
+      project?.["Project Name EN"]
+    ) ||
+    normalize(
+      project?.["Project Name"]
+    ) ||
+    normalize(
+      project?.["Project Code"]
+    ) ||
+    "ไม่ระบุโปรเจกต์"
+  );
+}
+
+function getProjectCode(project) {
+  return (
+    normalize(
+      project?.["Project Code"]
+    ) || ""
+  );
+}
+
+function parseProgress(value) {
+  const parsed = Number.parseInt(
+    String(value ?? "0"),
+    10
+  );
+
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+
+  return Math.min(
+    100,
+    Math.max(0, parsed)
+  );
+}
+
+// =========================
+// Format Task
+// =========================
+
+export function formatTask(
+  task,
+  index
+) {
+  const status =
+    task.Status || "To Do";
 
   let icon = "⬜";
 
@@ -35,29 +99,48 @@ export function formatTask(task, index) {
     icon = "❌";
   }
 
+  const rawProgress =
+    task["Progress (%)"];
+
   const progress =
-    task["Progress (%)"] !== ""
-      ? ` • ${task["Progress (%)"]}%`
+    rawProgress !== "" &&
+    rawProgress !== undefined &&
+    rawProgress !== null
+      ? ` • ${rawProgress}%`
       : "";
 
-  const due = task["Due Date"]
+  const due = normalize(
+    task["Due Date"]
+  )
     ? `\n   📅 ${task["Due Date"]}`
+    : "";
+
+  const priority = normalize(
+    task.Priority
+  )
+    ? `\n   🔥 ${task.Priority}`
     : "";
 
   return (
     `${index + 1}. ${icon} ` +
     `${task["Task Name"]}${progress}\n` +
     `   ID: ${task["Task ID"]}` +
-    `${due}`
+    `${due}` +
+    `${priority}`
   );
 }
 
-export function formatTasks(title, tasks) {
+export function formatTasks(
+  title,
+  tasks
+) {
   if (!tasks.length) {
     return `${title}\n\nไม่พบรายการงาน`;
   }
 
-  const shown = tasks.slice(-20).reverse();
+  const shown = tasks
+    .slice(-20)
+    .reverse();
 
   const body = shown
     .map(formatTask)
@@ -71,21 +154,162 @@ export function formatTasks(title, tasks) {
   return `${title}\n\n${body}${more}`;
 }
 
-export async function handleTaskCommand(
+// =========================
+// Resolve Task Project
+// =========================
+
+async function resolveTaskProject({
+  fields,
+  userId,
+}) {
+  const explicitProject =
+    normalize(
+      fields.project
+    ) ||
+    normalize(
+      fields.projectCode
+    ) ||
+    normalize(
+      fields.projectName
+    );
+
+  // ผู้ใช้ระบุ Project ในข้อความ
+  if (explicitProject) {
+    const project =
+      await resolveProject(
+        explicitProject
+      );
+
+    return {
+      project,
+      explicitProject,
+      source: "explicit",
+    };
+  }
+
+  // ไม่ได้ระบุ Project
+  // ให้ดึงจาก UserContext
+  if (normalize(userId)) {
+    const context =
+      await getUserContext(
+        userId
+      );
+
+    const contextProjectId =
+      normalize(
+        context?.[
+          "Current Project ID"
+        ]
+      );
+
+    const contextProjectCode =
+      normalize(
+        context?.[
+          "Current Project Code"
+        ]
+      );
+
+    const contextProjectName =
+      normalize(
+        context?.[
+          "Current Project Name"
+        ]
+      );
+
+    if (
+      contextProjectId ||
+      contextProjectCode
+    ) {
+      let project = null;
+
+      if (contextProjectCode) {
+        project =
+          await resolveProject(
+            contextProjectCode
+          );
+      }
+
+      /*
+       * กรณี resolveProject หาไม่เจอ
+       * แต่ UserContext มี Project ID อยู่
+       * ให้สร้าง object ชั่วคราวเพื่อใช้งานต่อ
+       */
+      if (!project && contextProjectId) {
+        project = {
+          "Project ID":
+            contextProjectId,
+          "Project Code":
+            contextProjectCode,
+          "Project Name TH":
+            contextProjectName,
+        };
+      }
+
+      return {
+        project,
+        explicitProject: "",
+        source: "context",
+      };
+    }
+  }
+
+  return {
+    project: null,
+    explicitProject: "",
+    source: "none",
+  };
+}
+
+// =========================
+// Command Handler
+// =========================
+
+export async function handleTaskCommand({
   text,
-  reporter
-) {
-  if (/^\/my$/i.test(text)) {
-    const tasks = await getMyTasks(reporter);
+  reporter,
+  userId,
+}) {
+  const normalizedText =
+    normalize(text);
+
+  const normalizedReporter =
+    normalize(reporter) || "ไม่ระบุ";
+
+  if (!normalizedText) {
+    return null;
+  }
+
+  // =========================
+  // My Tasks
+  // =========================
+
+  if (
+    /^\/my$/i.test(
+      normalizedText
+    )
+  ) {
+    const tasks =
+      await getMyTasks(
+        normalizedReporter
+      );
 
     return formatTasks(
-      `👤 งานของ ${reporter}`,
+      `👤 งานของ ${normalizedReporter}`,
       tasks
     );
   }
 
-  if (/^\/waiting$/i.test(text)) {
-    const tasks = await getWaitingTasks();
+  // =========================
+  // Waiting Tasks
+  // =========================
+
+  if (
+    /^\/waiting$/i.test(
+      normalizedText
+    )
+  ) {
+    const tasks =
+      await getWaitingTasks();
 
     return formatTasks(
       "⏳ งานที่รอ",
@@ -93,8 +317,17 @@ export async function handleTaskCommand(
     );
   }
 
-  if (/^\/done$/i.test(text)) {
-    const tasks = await getDoneTasks();
+  // =========================
+  // Done Tasks
+  // =========================
+
+  if (
+    /^\/done$/i.test(
+      normalizedText
+    )
+  ) {
+    const tasks =
+      await getDoneTasks();
 
     return formatTasks(
       "✅ งานที่เสร็จ",
@@ -102,121 +335,291 @@ export async function handleTaskCommand(
     );
   }
 
-  if (/^\/task\s+add(?:\s|$)/i.test(text)) {
-    const fields = parseFields(text);
+  // =========================
+  // Show Add Task Form
+  // =========================
 
-    if (!fields.task && !fields.name) {
+  if (
+    /^\/task\s+add$/i.test(
+      normalizedText
+    )
+  ) {
+    return [
+      "📝 เพิ่มงานใหม่",
+      "",
+      "คัดลอกแบบฟอร์มนี้แล้วกรอกข้อมูล:",
+      "",
+      "/task add",
+      "Project: ",
+      "Task: ",
+      "Description: ",
+      "Category: ",
+      "Owner: ",
+      "Requested By: ",
+      "Contact: ",
+      "Status: To Do",
+      "Progress: 0",
+      "Priority: Medium",
+      "Next Step: ",
+      "Waiting For: ",
+      "Due Date: ",
+      "",
+      "หมายเหตุ:",
+      "ถ้าเลือกโปรเจกต์ด้วย /use แล้ว",
+      "สามารถเว้น Project ได้",
+    ].join("\n");
+  }
+
+  // =========================
+  // Add Task
+  // =========================
+
+  if (
+    /^\/task\s+add(?:\s|$)/i.test(
+      normalizedText
+    )
+  ) {
+    const fields =
+      parseFields(
+        normalizedText
+      );
+
+    const taskName =
+      normalize(fields.task) ||
+      normalize(fields.name) ||
+      normalize(fields.taskName);
+
+    if (!taskName) {
       return [
-        "กรุณาระบุ Task",
+        "กรุณาระบุชื่อ Task",
         "",
+        "ตัวอย่าง:",
         "/task add",
-        "Project: P50",
         "Task: สรุป MoM",
         "Category: Report",
         "Owner: ยู",
         "Status: To Do",
-        "Progress: 0",
         "Priority: High",
       ].join("\n");
     }
 
-    const project = await resolveProject(
-      fields.project
-    );
+    const {
+      project,
+      explicitProject,
+      source,
+    } =
+      await resolveTaskProject({
+        fields,
+        userId,
+      });
 
-    if (fields.project && !project) {
-      return `ไม่พบโปรเจกต์ ${fields.project}`;
+    if (
+      explicitProject &&
+      !project
+    ) {
+      return [
+        `ไม่พบโปรเจกต์ “${explicitProject}”`,
+        "",
+        "ลองค้นหาจาก:",
+        "• Project Code",
+        "• ชื่อภาษาไทย",
+        "• ชื่อภาษาอังกฤษ",
+        "• Alias",
+      ].join("\n");
     }
 
-    const taskId = newId("TASK");
+    const projectId =
+      normalize(
+        project?.["Project ID"]
+      );
 
-    const progress = Math.min(
-      100,
-      Math.max(
-        0,
-        Number.parseInt(
-          fields.progress || "0",
-          10
-        ) || 0
-      )
-    );
+    if (!projectId) {
+      return [
+        "ยังไม่พบโปรเจกต์สำหรับ Task นี้",
+        "",
+        "เลือกโปรเจกต์ก่อนด้วย:",
+        "/use DDPM001",
+        "",
+        "หรือระบุในคำสั่ง:",
+        "Project: DDPM001",
+      ].join("\n");
+    }
+
+    const taskId =
+      newId("TASK");
+
+    const progress =
+      parseProgress(
+        fields.progress
+      );
 
     const status =
       progress === 100
         ? "Done"
-        : normalizeStatus(fields.status);
+        : normalizeStatus(
+            fields.status
+          );
 
-    const priority = normalizePriority(
-      fields.priority
-    );
+    const priority =
+      normalizePriority(
+        fields.priority
+      );
 
-    const category = normalizeCategory(
-      fields.category
-    );
+    const category =
+      normalizeCategory(
+        fields.category
+      );
+
+    const owner =
+      normalize(fields.owner) ||
+      normalizedReporter;
 
     await createTask({
       taskId,
-      projectId:
-        project?.["Project ID"] || "",
-      taskName:
-        fields.task || fields.name,
+
+      projectId,
+
+      parentTaskId:
+        normalize(
+          fields.parentTaskId
+        ),
+
+      taskCode:
+        normalize(
+          fields.taskCode
+        ),
+
+      taskName,
+
       description:
-        fields.description || "",
-      owner:
-        fields.owner || reporter,
-      requestedBy:
-        fields.requestedBy || "",
-      contactPerson:
-        fields.contact || "",
-      status,
-      progress,
-      priority,
+        normalize(
+          fields.description
+        ),
+
+      referenceLink:
+        normalize(
+          fields.referenceLink
+        ),
+
       category,
+
+      owner,
+
+      requestedBy:
+        normalize(
+          fields.requestedBy
+        ),
+
+      contactPerson:
+        normalize(
+          fields.contact
+        ) ||
+        normalize(
+          fields.contactPerson
+        ),
+
+      status,
+
+      progress,
+
+      priority,
+
+      latestUpdate:
+        normalize(
+          fields.latestUpdate
+        ),
+
       nextStep:
-        fields.nextStep || "",
+        normalize(
+          fields.nextStep
+        ),
+
       waitingFor:
-        fields.waitingFor || "",
-      dueDate:
-        fields.dueDate || "",
+        normalize(
+          fields.waitingFor
+        ),
+
       receivedDate:
+        normalize(
+          fields.receivedDate
+        ) ||
         bangkokDate(),
+
+      dueDate:
+        normalize(
+          fields.dueDate
+        ),
+
+      estimatedHours:
+        normalize(
+          fields.estimatedHours
+        ),
+
+      actualHours:
+        normalize(
+          fields.actualHours
+        ),
+
       createdBy:
-        reporter,
+        normalizedReporter,
+
       updatedBy:
-        reporter,
+        normalizedReporter,
     });
+
+    const projectDisplayName =
+      getProjectName(project);
+
+    const projectCode =
+      getProjectCode(project);
 
     return [
       "✅ เพิ่มงานแล้ว",
-      `📝 ${fields.task || fields.name}`,
-      `👤 ${fields.owner || reporter}`,
-      `📁 ${
-        project?.["Project Name"] ||
-        "ไม่ระบุโปรเจกต์"
-      }`,
+      "",
+      `📝 ${taskName}`,
+      `👤 ${owner}`,
+      `📁 ${projectDisplayName}`,
+      projectCode
+        ? `🔖 ${projectCode}`
+        : "",
       `🏷 ${category}`,
       `📌 ${status} • ${progress}%`,
       `🔥 ${priority}`,
+      source === "context"
+        ? "📍 ใช้โปรเจกต์จาก Context"
+        : "",
       `ID: ${taskId}`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
-  const taskUpdate = text.match(
-    /^\/task\s+update\s+(\S+)\s+(To Do|Doing|Waiting|Done|Cancelled)(?:\s+(\d{1,3}))?\s*$/i
-  );
+  // =========================
+  // Update Task Status
+  // =========================
 
-  if (taskUpdate) {
-    const taskId = taskUpdate[1];
-
-    const status = normalizeStatus(
-      taskUpdate[2]
+  const taskUpdate =
+    normalizedText.match(
+      /^\/task\s+update\s+(\S+)\s+(To Do|Doing|Waiting|Done|Cancelled)(?:\s+(\d{1,3}))?\s*$/i
     );
 
-    const rawProgress = taskUpdate[3];
+  if (taskUpdate) {
+    const taskId =
+      taskUpdate[1];
+
+    const status =
+      normalizeStatus(
+        taskUpdate[2]
+      );
+
+    const rawProgress =
+      taskUpdate[3];
 
     let progress;
 
-    if (rawProgress !== undefined) {
+    if (
+      rawProgress !== undefined
+    ) {
       progress = Math.min(
         100,
         Math.max(
@@ -224,18 +627,21 @@ export async function handleTaskCommand(
           Number(rawProgress)
         )
       );
-    } else if (status === "Done") {
+    } else if (
+      status === "Done"
+    ) {
       progress = 100;
     } else {
       progress = 0;
     }
 
-    const updated = await updateTaskStatus(
-      taskId,
-      status,
-      progress,
-      reporter
-    );
+    const updated =
+      await updateTaskStatus(
+        taskId,
+        status,
+        progress,
+        normalizedReporter
+      );
 
     if (!updated) {
       return `ไม่พบ Task ID ${taskId}`;
@@ -248,7 +654,15 @@ export async function handleTaskCommand(
     ].join("\n");
   }
 
-  if (/^\/task\s+update(?:\s|$)/i.test(text)) {
+  // =========================
+  // Invalid Update Format
+  // =========================
+
+  if (
+    /^\/task\s+update(?:\s|$)/i.test(
+      normalizedText
+    )
+  ) {
     return [
       "รูปแบบคำสั่งไม่ถูกต้อง",
       "",
