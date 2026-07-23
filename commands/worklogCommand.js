@@ -10,7 +10,7 @@ import {
 
 import {
   getUserContext,
-} from "../services/userContextService.js";
+} from "./contextCommand.js";
 
 import {
   bangkokDate,
@@ -26,16 +26,61 @@ import {
   resolveProject,
 } from "./projectCommand.js";
 
-/**
- * ตัดเวลาออกจากต้นข้อความ
- *
- * รองรับ:
- * 09:00 ประชุม...
- * 09.00 ประชุม...
- * 9:30 น. ประชุม...
- */
+// =========================
+// Helpers
+// =========================
+
+function normalize(value) {
+  return String(value ?? "")
+    .trim();
+}
+
+function normalizeLower(value) {
+  return normalize(value)
+    .toLowerCase();
+}
+
+function getProjectName(project) {
+  return (
+    normalize(
+      project?.["Project Name TH"]
+    ) ||
+    normalize(
+      project?.["Project Name EN"]
+    ) ||
+    normalize(
+      project?.["Project Name"]
+    ) ||
+    normalize(
+      project?.["Project Code"]
+    ) ||
+    "ไม่ระบุโปรเจกต์"
+  );
+}
+
+function getProjectCode(project) {
+  return (
+    normalize(
+      project?.["Project Code"]
+    ) ||
+    ""
+  );
+}
+
+function getProjectDisplay(project) {
+  return (
+    getProjectCode(project) ||
+    getProjectName(project)
+  );
+}
+
+// =========================
+// Extract Time
+// =========================
+
 function extractTime(line) {
-  const value = String(line || "").trim();
+  const value =
+    normalize(line);
 
   const match = value.match(
     /^(\d{1,2})[.:](\d{2})(?:\s*น\.?)?\s*[-–—:]?\s*(.*)$/i
@@ -48,8 +93,11 @@ function extractTime(line) {
     };
   }
 
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
+  const hour =
+    Number(match[1]);
+
+  const minute =
+    Number(match[2]);
 
   if (
     Number.isNaN(hour) ||
@@ -74,68 +122,64 @@ function extractTime(line) {
       "0"
     )}`,
 
-    description: match[3].trim(),
+    description:
+      normalize(match[3]),
   };
 }
 
-/**
- * หา Project จากข้อความ
- */
+// =========================
+// Project Matching
+// =========================
+
+function getProjectAliases(project) {
+  return normalize(
+    project?.Aliases
+  )
+    .split(/[,|;/]+/)
+    .map((alias) =>
+      normalizeLower(alias)
+    )
+    .filter(Boolean);
+}
+
 function findProjectFromText(
   text,
   projects
 ) {
-  const normalizedText = String(
-    text || ""
-  )
-    .trim()
-    .toLowerCase();
+  const normalizedText =
+    normalizeLower(text);
 
   if (!normalizedText) {
     return null;
   }
 
   return (
-    projects.find((item) => {
-      const projectId = String(
-        item["Project ID"] || ""
-      )
-        .trim()
-        .toLowerCase();
+    projects.find((project) => {
+      const values = [
+        project["Project ID"],
+        project["Project Code"],
+        project["Project Name TH"],
+        project["Project Name EN"],
+        project["Project Name"],
+        ...getProjectAliases(
+          project
+        ),
+      ]
+        .map((value) =>
+          normalizeLower(value)
+        )
+        .filter(Boolean);
 
-      const code = String(
-        item["Project Code"] || ""
-      )
-        .trim()
-        .toLowerCase();
-
-      const name = String(
-        item["Project Name"] || ""
-      )
-        .trim()
-        .toLowerCase();
-
-      return (
-        (projectId &&
+      return values.some(
+        (value) =>
           normalizedText.includes(
-            projectId
-          )) ||
-        (code &&
-          normalizedText.includes(
-            code
-          )) ||
-        (name &&
-          normalizedText.includes(
-            name
-          ))
+            value
+          )
       );
     }) || null
   );
 }
 
-/**
- * หา Project จาก UserContext
- */
 function findProjectFromContext(
   context,
   projects
@@ -144,17 +188,26 @@ function findProjectFromContext(
     return null;
   }
 
-  const currentProjectId = String(
-    context["Current Project ID"] || ""
-  ).trim();
+  const currentProjectId =
+    normalize(
+      context[
+        "Current Project ID"
+      ]
+    );
 
-  const currentProjectCode = String(
-    context["Current Project Code"] || ""
-  ).trim();
+  const currentProjectCode =
+    normalizeLower(
+      context[
+        "Current Project Code"
+      ]
+    );
 
-  const currentProjectName = String(
-    context["Current Project Name"] || ""
-  ).trim();
+  const currentProjectName =
+    normalizeLower(
+      context[
+        "Current Project Name"
+      ]
+    );
 
   if (
     !currentProjectId &&
@@ -164,48 +217,91 @@ function findProjectFromContext(
     return null;
   }
 
-  return (
-    projects.find((item) => {
-      const projectId = String(
-        item["Project ID"] || ""
-      ).trim();
+  const matched =
+    projects.find((project) => {
+      const projectId =
+        normalize(
+          project["Project ID"]
+        );
 
-      const projectCode = String(
-        item["Project Code"] || ""
-      ).trim();
+      const projectCode =
+        normalizeLower(
+          project["Project Code"]
+        );
 
-      const projectName = String(
-        item["Project Name"] || ""
-      ).trim();
+      const projectNames = [
+        project[
+          "Project Name TH"
+        ],
+        project[
+          "Project Name EN"
+        ],
+        project[
+          "Project Name"
+        ],
+      ]
+        .map((value) =>
+          normalizeLower(value)
+        )
+        .filter(Boolean);
 
       return (
-        (currentProjectId &&
+        (
+          currentProjectId &&
           projectId ===
-            currentProjectId) ||
-        (currentProjectCode &&
-          projectCode.toLowerCase() ===
-            currentProjectCode.toLowerCase()) ||
-        (currentProjectName &&
-          projectName.toLowerCase() ===
-            currentProjectName.toLowerCase())
+            currentProjectId
+        ) ||
+        (
+          currentProjectCode &&
+          projectCode ===
+            currentProjectCode
+        ) ||
+        (
+          currentProjectName &&
+          projectNames.includes(
+            currentProjectName
+          )
+        )
       );
-    }) || null
-  );
+    });
+
+  if (matched) {
+    return matched;
+  }
+
+  /*
+   * Fallback:
+   * หาก Context มี Project ID แต่หาใน Projects ไม่เจอ
+   * ยังสามารถใช้ข้อมูลจาก Context บันทึก WorkLog ได้
+   */
+  if (currentProjectId) {
+    return {
+      "Project ID":
+        currentProjectId,
+
+      "Project Code":
+        normalize(
+          context[
+            "Current Project Code"
+          ]
+        ),
+
+      "Project Name TH":
+        normalize(
+          context[
+            "Current Project Name"
+          ]
+        ),
+    };
+  }
+
+  return null;
 }
 
-/**
- * แยกข้อความเป็นรายการ WorkLog
- *
- * รองรับ:
- *
- * /update
- * 09:00 ประชุม
- * 10:00 ประสาน BA
- *
- * และกรณี newline หาย:
- *
- * /update 09:00 ประชุม 10:00 ประสาน BA
- */
+// =========================
+// Split WorkLog Lines
+// =========================
+
 function splitWorkLogLines(text) {
   return String(text || "")
     .replace(/\r\n?/g, "\n")
@@ -214,18 +310,25 @@ function splitWorkLogLines(text) {
       "\n"
     )
     .split("\n")
-    .map((line) => line.trim())
+    .map((line) =>
+      line.trim()
+    )
     .filter(Boolean)
     .filter(
       (line) =>
-        !/^[-–—=_*#]+$/.test(line)
+        !/^[-–—=_*#]+$/.test(
+          line
+        )
     );
 }
 
-/**
- * กำหนด Work Type จาก Activity Type
- */
-function inferWorkType(activityType) {
+// =========================
+// Work Type
+// =========================
+
+function inferWorkType(
+  activityType
+) {
   const workTypeMap = {
     Meeting: "Meeting",
     Coordinate: "Internal",
@@ -240,14 +343,17 @@ function inferWorkType(activityType) {
   };
 
   return (
-    workTypeMap[activityType] ||
+    workTypeMap[
+      activityType
+    ] ||
     "Internal"
   );
 }
 
-/**
- * สร้าง WorkLog หนึ่งรายการ
- */
+// =========================
+// Create WorkLog
+// =========================
+
 async function createWorkLog({
   description,
   time,
@@ -255,29 +361,42 @@ async function createWorkLog({
   reporter,
 }) {
   const activityType =
-    inferActivity(description);
+    inferActivity(
+      description
+    );
 
   const statusAfterUpdate =
-    normalizeStatus(description);
+    normalizeStatus(
+      description
+    );
 
   await addWorkLog({
-    logId: newId("LOG"),
+    logId:
+      newId("LOG"),
 
     projectId:
-      project?.["Project ID"] || "",
+      normalize(
+        project?.[
+          "Project ID"
+        ]
+      ),
 
-    createdBy: reporter,
+    createdBy:
+      reporter,
 
     activityType,
 
     workType:
-      inferWorkType(activityType),
+      inferWorkType(
+        activityType
+      ),
 
     description,
 
     statusAfterUpdate,
 
-    activityTime: time,
+    activityTime:
+      time,
   });
 
   return {
@@ -289,15 +408,17 @@ async function createWorkLog({
   };
 }
 
-/**
- * บันทึก WorkLog แบบรวดเร็ว
- */
+// =========================
+// Quick Update
+// =========================
+
 export async function addQuickUpdate({
   text,
   reporter,
   userId,
 }) {
-  const rawText = String(text || "");
+  const rawText =
+    String(text || "");
 
   const cleaned = rawText
     .replace(
@@ -306,30 +427,14 @@ export async function addQuickUpdate({
     )
     .trim();
 
-  console.log(
-    "RAW UPDATE:",
-    JSON.stringify(rawText)
-  );
-
-  console.log(
-    "CLEANED UPDATE:",
-    JSON.stringify(cleaned)
-  );
-
   if (!cleaned) {
     return [
       "กรุณาพิมพ์รายละเอียดต่อจาก /update",
       "",
       "ตัวอย่าง:",
       "/update",
-      "09:00 ประชุมกับพี่บอยเรื่อง Project 50",
-      "10:30 รับงาน Oracle จากพี่กบ",
-      "",
-      "หรือระบุโปรเจกต์ไว้ด้านบน:",
-      "/update",
-      "Project: P50",
       "09:00 ประชุมกับพี่บอย",
-      "13:00 ทำรายงาน",
+      "10:30 รับงานจากพี่กบ",
       "",
       "หากตั้งโปรเจกต์ปัจจุบันไว้แล้ว",
       "ไม่ต้องระบุ Project ซ้ำ",
@@ -341,10 +446,12 @@ export async function addQuickUpdate({
 
   let context = null;
 
-  if (userId) {
+  if (normalize(userId)) {
     try {
       context =
-        await getUserContext(userId);
+        await getUserContext(
+          userId
+        );
     } catch (error) {
       console.error(
         "Get UserContext failed:",
@@ -359,29 +466,41 @@ export async function addQuickUpdate({
       projects
     );
 
-  let explicitProject = null;
-  let content = cleaned;
+  console.log(
+    "USER CONTEXT:",
+    context
+  );
 
-  /**
+  console.log(
+    "CONTEXT PROJECT:",
+    contextProject
+  );
+
+  let explicitProject =
+    null;
+
+  let content =
+    cleaned;
+
+  /*
    * รองรับ:
    *
    * Project: P50
-   * 09:00 ประชุม...
-   * 10:00 ทำรายงาน...
-   *
-   * และ:
-   *
    * โปรเจกต์: 69DDPM001
-   * 09:00 ประชุม...
+   * โปรเจ็ค: P50
    */
   const explicitProjectMatch =
     cleaned.match(
-      /^(?:project|โปรเจกต์)\s*[:：]\s*([^\n]+)\n([\s\S]+)$/i
+      /^(?:project|โปรเจกต์|โปรเจ็ค|โปรเจค)\s*[:：]\s*([^\n]+)(?:\n([\s\S]*))?$/i
     );
 
-  if (explicitProjectMatch) {
+  if (
+    explicitProjectMatch
+  ) {
     const projectKeyword =
-      explicitProjectMatch[1].trim();
+      normalize(
+        explicitProjectMatch[1]
+      );
 
     explicitProject =
       await resolveProject(
@@ -392,37 +511,20 @@ export async function addQuickUpdate({
       return [
         `❌ ไม่พบโปรเจกต์ ${projectKeyword}`,
         "",
-        "กรุณาตรวจสอบ Project Code หรือชื่อโปรเจกต์อีกครั้ง",
+        "กรุณาตรวจสอบ Project Code ชื่อ หรือ Alias",
       ].join("\n");
     }
 
     content =
-      explicitProjectMatch[2].trim();
+      normalize(
+        explicitProjectMatch[2]
+      );
   }
 
   const lines =
-    splitWorkLogLines(content);
-
-  console.log(
-    "WORKLOG LINES:",
-    JSON.stringify(lines)
-  );
-
-  console.log(
-    "CURRENT PROJECT:",
-    contextProject
-      ? {
-          projectId:
-            contextProject[
-              "Project ID"
-            ],
-          projectCode:
-            contextProject[
-              "Project Code"
-            ],
-        }
-      : null
-  );
+    splitWorkLogLines(
+      content
+    );
 
   if (!lines.length) {
     return "ไม่พบรายละเอียดที่ต้องการบันทึก";
@@ -431,27 +533,30 @@ export async function addQuickUpdate({
   const createdLogs = [];
   const failedLogs = [];
 
-  for (const line of lines) {
+  for (
+    const line of lines
+  ) {
     const {
       time,
       description,
-    } = extractTime(line);
+    } =
+      extractTime(line);
 
     if (!description) {
       failedLogs.push({
         line,
-        reason: "ไม่มีรายละเอียดงาน",
+        reason:
+          "ไม่มีรายละเอียดงาน",
       });
 
       continue;
     }
 
-    /**
-     * ลำดับการหา Project:
-     *
-     * 1. Project ที่ระบุไว้บนหัวข้อความ
-     * 2. Project ที่พบในแต่ละรายการ
-     * 3. Project ปัจจุบันจาก UserContext
+    /*
+     * ลำดับ Project:
+     * 1. Project: ที่ระบุหัวข้อความ
+     * 2. Project ที่พบในแต่ละบรรทัด
+     * 3. Current Project จาก UserContext
      */
     const projectFromLine =
       findProjectFromText(
@@ -474,7 +579,9 @@ export async function addQuickUpdate({
           reporter,
         });
 
-      createdLogs.push(result);
+      createdLogs.push(
+        result
+      );
     } catch (error) {
       console.error(
         "Create WorkLog failed:",
@@ -507,18 +614,15 @@ export async function addQuickUpdate({
   const resultLines =
     createdLogs.map(
       (log, index) => {
-        const timeText = log.time
-          ? `${log.time} `
-          : "";
+        const timeText =
+          log.time
+            ? `${log.time} `
+            : "";
 
         const projectText =
-          log.project?.[
-            "Project Code"
-          ] ||
-          log.project?.[
-            "Project Name"
-          ] ||
-          "ไม่ระบุโปรเจกต์";
+          getProjectDisplay(
+            log.project
+          );
 
         return [
           `${index + 1}. ${timeText}[${log.activityType}]`,
@@ -549,18 +653,22 @@ export async function addQuickUpdate({
   return response.join("\n");
 }
 
-/**
- * จัดการคำสั่ง WorkLog
- */
+// =========================
+// Command Handler
+// =========================
+
 export async function handleWorklogCommand({
   text,
   reporter,
   userId,
 }) {
   const normalizedText =
-    String(text || "").trim();
+    String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
 
-  const today = bangkokDate();
+  const today =
+    bangkokDate();
 
   if (
     /^\/update(?:\s|$)/i.test(
@@ -593,22 +701,31 @@ export async function handleWorklogCommand({
     const body = logs
       .slice(-25)
       .reverse()
-      .map((log, index) => {
-        const project =
-          log["Project ID"]
-            ? ` • ${log["Project ID"]}`
-            : "";
+      .map(
+        (log, index) => {
+          const project =
+            log["Project ID"]
+              ? ` • ${log["Project ID"]}`
+              : "";
 
-        const activityTime =
-          log["Activity Time"]
-            ? `${log["Activity Time"]} `
-            : "";
+          const activityTime =
+            log["Time"] ||
+            log[
+              "Activity Time"
+            ] ||
+            "";
 
-        return [
-          `${index + 1}. ${activityTime}[${log["Activity Type"]}] ${log.Description}`,
-          `   ${log["Created By"]}${project}`,
-        ].join("\n");
-      })
+          const timeText =
+            activityTime
+              ? `${activityTime} `
+              : "";
+
+          return [
+            `${index + 1}. ${timeText}[${log["Activity Type"]}] ${log.Description}`,
+            `   ${log["Created By"]}${project}`,
+          ].join("\n");
+        }
+      )
       .join("\n\n");
 
     return [
