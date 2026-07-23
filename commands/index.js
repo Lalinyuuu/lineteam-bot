@@ -554,7 +554,8 @@ export async function handleCommand(
 
     (await handleTaskCommand(
       text,
-      reporter
+      reporter,
+      userId,
     )) ||
 
     (await handleProjectCommand(
