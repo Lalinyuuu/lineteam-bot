@@ -629,8 +629,8 @@ function formatCurrentContext(
       "📂 ยังไม่ได้เลือกโปรเจกต์ปัจจุบัน",
       "",
       "เลือกโปรเจกต์ด้วยคำสั่ง:",
-      "/use DDPM001",
-      "/use Project 50",
+      "/use 69DDPM001",
+      "/use Chapanakit",
       "/use ฮะเก๋า",
     ].join("\n");
   }

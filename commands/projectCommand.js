@@ -323,7 +323,7 @@ export async function handleProjectCommand(
         "กรุณาระบุ Project Code",
         "",
         "/project add",
-        "Project Code: DDPM001",
+        "Project Code: 69DDPM001",
         "Project Name TH: ชื่อโปรเจกต์ภาษาไทย",
         "Project Name EN: English Project Name",
         "Aliases: Project 50, ฮะเก๋า, D-EMS",
